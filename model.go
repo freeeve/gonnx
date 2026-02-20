@@ -268,6 +268,12 @@ func getInputTensorsForNode(names []string, tensors Tensors) ([]tensor.Tensor, e
 func setOutputTensorsOfNode(
 	names []string, outputTensors []tensor.Tensor, tensors Tensors,
 ) error {
+	// Some operators (e.g. LayerNormalization) produce optional outputs.
+	// When the model graph declares fewer output names than the operator
+	// returns, we truncate the extra outputs rather than failing.
+	if len(outputTensors) > len(names) {
+		outputTensors = outputTensors[:len(names)]
+	}
 	if len(names) != len(outputTensors) {
 		return ErrModel("could not set output tensor")
 	}
