@@ -152,14 +152,74 @@ var ignoredTests = []string{
 	"test_cast_no_saturate_FLOAT16_to_FLOAT8E4M3FN",   // Unsupported datatype.
 	"test_cast_no_saturate_FLOAT16_to_FLOAT8E5M2",     // Unsupported datatype.
 
-	"test_constantofshape_int_shape_zero",   // Empty tensors are not supported in gorgonia
-	"test_gather_elements_0",                // Operator GatherElements is not implemented
-	"test_gather_elements_1",                // Operator GatherElements is not implemented
-	"test_gather_elements_negative_indices", // Operator GatherElements is not implemented
+	"test_constantofshape_int_shape_zero", // Empty tensors are not supported in gorgonia
+
+	"test_layer_normalization_2d_axis_negative_1_expanded",               // Requires Reciprocal operator
+	"test_layer_normalization_2d_axis_negative_1_expanded_ver18",         // Requires Reciprocal operator
+	"test_layer_normalization_2d_axis_negative_2_expanded",               // Requires Reciprocal operator
+	"test_layer_normalization_2d_axis_negative_2_expanded_ver18",         // Requires Reciprocal operator
+	"test_layer_normalization_2d_axis0_expanded",                         // Requires Reciprocal operator
+	"test_layer_normalization_2d_axis0_expanded_ver18",                   // Requires Reciprocal operator
+	"test_layer_normalization_2d_axis1_expanded",                         // Requires Reciprocal operator
+	"test_layer_normalization_2d_axis1_expanded_ver18",                   // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis_negative_1_epsilon_expanded",       // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis_negative_1_epsilon_expanded_ver18", // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis_negative_2_epsilon_expanded",       // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis_negative_2_epsilon_expanded_ver18", // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis_negative_3_epsilon_expanded",       // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis_negative_3_epsilon_expanded_ver18", // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis0_epsilon_expanded",                 // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis0_epsilon_expanded_ver18",           // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis1_epsilon_expanded",                 // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis1_epsilon_expanded_ver18",           // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis2_epsilon_expanded",                 // Requires Reciprocal operator
+	"test_layer_normalization_3d_axis2_epsilon_expanded_ver18",           // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis_negative_1_expanded",               // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis_negative_1_expanded_ver18",         // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis_negative_2_expanded",               // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis_negative_2_expanded_ver18",         // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis_negative_3_expanded",               // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis_negative_3_expanded_ver18",         // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis_negative_4_expanded",               // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis_negative_4_expanded_ver18",         // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis0_expanded",                         // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis0_expanded_ver18",                   // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis1_expanded",                         // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis1_expanded_ver18",                   // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis2_expanded",                         // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis2_expanded_ver18",                   // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis3_expanded",                         // Requires Reciprocal operator
+	"test_layer_normalization_4d_axis3_expanded_ver18",                   // Requires Reciprocal operator
+	"test_layer_normalization_default_axis_expanded",                     // Requires Reciprocal operator
+	"test_layer_normalization_default_axis_expanded_ver18",               // Requires Reciprocal operator
+	"test_leakyrelu_default_expanded",                                    // Unsupported operator CastLike
+	"test_leakyrelu_example_expanded",                                    // Unsupported operator CastLike
+	"test_leakyrelu_expanded",                                            // Unsupported operator CastLike
 
 	"test_prelu_broadcast_expanded",   // Unsupported operator CastLike
 	"test_prelu_example_expanded",     // Unsupported operator CastLike
 	"test_constant_pad_negative_axes", // Unsupported operator Pad
+
+	"test_reduce_sum_empty_set",                                      // Empty tensors not supported
+	"test_reduce_sum_empty_set_non_reduced_axis_zero",                // Empty tensors not supported
+	"test_reduce_sum_square_default_axes_keepdims_example",           // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_default_axes_keepdims_example_expanded",  // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_default_axes_keepdims_random",            // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_default_axes_keepdims_random_expanded",   // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_do_not_keepdims_example",                 // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_do_not_keepdims_example_expanded",        // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_do_not_keepdims_random",                  // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_do_not_keepdims_random_expanded",         // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_empty_set",                               // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_empty_set_expanded",                      // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_keepdims_example",                        // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_keepdims_example_expanded",               // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_keepdims_random",                         // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_keepdims_random_expanded",                // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_negative_axes_keepdims_example",          // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_negative_axes_keepdims_example_expanded", // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_negative_axes_keepdims_random",           // Different operator (ReduceSumSquare)
+	"test_reduce_sum_square_negative_axes_keepdims_random_expanded",  // Different operator (ReduceSumSquare)
 
 	"test_argmax_keepdims_random_select_last_index",                // Unsupported attribute
 	"test_argmax_keepdims_example_select_last_index",               // Unsupported attribute
@@ -192,7 +252,9 @@ func TestOps(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
 				outputs, err := test.model.Run(test.inputs)
-				assert.Nil(t, err)
+				if !assert.Nil(t, err) {
+					return
+				}
 
 				for outputName := range test.outputs {
 					expectedTensor := test.outputs[outputName]
@@ -253,6 +315,23 @@ func getTestCasesForOp(opName string) ([]*ONNXTestCase, error) {
 	return tests, nil
 }
 
+// allOpFilters contains all operator test prefixes, built lazily.
+var allOpFilters []string
+
+func buildOpFilters() []string {
+	if allOpFilters != nil {
+		return allOpFilters
+	}
+	for opName := range operators {
+		testOpName := strings.ToLower(opName)
+		if mappedFilter, ok := opNameMap[testOpName]; ok {
+			testOpName = mappedFilter
+		}
+		allOpFilters = append(allOpFilters, fmt.Sprintf("test_%v", testOpName))
+	}
+	return allOpFilters
+}
+
 func shouldRunTest(folder, opFilter string) bool {
 	for _, ignoredTest := range ignoredTests {
 		if folder == ignoredTest {
@@ -260,14 +339,18 @@ func shouldRunTest(folder, opFilter string) bool {
 		}
 	}
 
-	if strings.Contains(folder, opFilter) {
-		remaining := strings.ReplaceAll(folder, opFilter, "")
-		if len(remaining) == 0 || remaining[:1] == "_" {
-			return true
+	if folder != opFilter && !strings.HasPrefix(folder, opFilter+"_") {
+		return false
+	}
+
+	// If a longer operator filter also matches this folder, skip it for this opFilter.
+	for _, other := range buildOpFilters() {
+		if len(other) > len(opFilter) && (folder == other || strings.HasPrefix(folder, other+"_")) {
+			return false
 		}
 	}
 
-	return false
+	return true
 }
 
 func getTestCase(folder string) (*ONNXTestCase, error) {
@@ -393,6 +476,28 @@ var expectedTests = []string{
 	"test_atanh_example",
 	"test_cast_DOUBLE_to_FLOAT",
 	"test_cast_FLOAT_to_DOUBLE",
+	"test_clip",
+	"test_clip_default_inbounds",
+	"test_clip_default_inbounds_expanded",
+	"test_clip_default_int8_inbounds",
+	"test_clip_default_int8_inbounds_expanded",
+	"test_clip_default_int8_max",
+	"test_clip_default_int8_max_expanded",
+	"test_clip_default_int8_min",
+	"test_clip_default_int8_min_expanded",
+	"test_clip_default_max",
+	"test_clip_default_max_expanded",
+	"test_clip_default_min",
+	"test_clip_default_min_expanded",
+	"test_clip_example",
+	"test_clip_example_expanded",
+	"test_clip_expanded",
+	"test_clip_inbounds",
+	"test_clip_inbounds_expanded",
+	"test_clip_outbounds",
+	"test_clip_outbounds_expanded",
+	"test_clip_splitbounds",
+	"test_clip_splitbounds_expanded",
 	"test_concat_1d_axis_0",
 	"test_concat_1d_axis_negative_1",
 	"test_concat_2d_axis_0",
@@ -443,17 +548,20 @@ var expectedTests = []string{
 	"test_gather_0",
 	"test_gather_1",
 	"test_gather_2d_indices",
+	"test_gather_elements_0",
+	"test_gather_elements_1",
+	"test_gather_elements_negative_indices",
 	"test_gather_negative_indices",
-	"test_gemm_default_single_elem_vector_bias",
 	"test_gemm_all_attributes",
 	"test_gemm_alpha",
+	"test_gemm_beta",
 	"test_gemm_default_matrix_bias",
 	"test_gemm_default_no_bias",
 	"test_gemm_default_scalar_bias",
+	"test_gemm_default_single_elem_vector_bias",
 	"test_gemm_default_vector_bias",
-	"test_gemm_transposeA",
 	"test_gemm_default_zero_bias",
-	"test_gemm_beta",
+	"test_gemm_transposeA",
 	"test_gemm_transposeB",
 	"test_greater",
 	"test_greater_bcast",
@@ -466,6 +574,28 @@ var expectedTests = []string{
 	"test_gru_with_initial_bias",
 	"test_identity",
 	"test_identity_sequence",
+	"test_layer_normalization_2d_axis_negative_1",
+	"test_layer_normalization_2d_axis_negative_2",
+	"test_layer_normalization_2d_axis0",
+	"test_layer_normalization_2d_axis1",
+	"test_layer_normalization_3d_axis_negative_1_epsilon",
+	"test_layer_normalization_3d_axis_negative_2_epsilon",
+	"test_layer_normalization_3d_axis_negative_3_epsilon",
+	"test_layer_normalization_3d_axis0_epsilon",
+	"test_layer_normalization_3d_axis1_epsilon",
+	"test_layer_normalization_3d_axis2_epsilon",
+	"test_layer_normalization_4d_axis_negative_1",
+	"test_layer_normalization_4d_axis_negative_2",
+	"test_layer_normalization_4d_axis_negative_3",
+	"test_layer_normalization_4d_axis_negative_4",
+	"test_layer_normalization_4d_axis0",
+	"test_layer_normalization_4d_axis1",
+	"test_layer_normalization_4d_axis2",
+	"test_layer_normalization_4d_axis3",
+	"test_layer_normalization_default_axis",
+	"test_leakyrelu",
+	"test_leakyrelu_default",
+	"test_leakyrelu_example",
 	"test_less",
 	"test_less_bcast",
 	"test_less_equal",
@@ -481,9 +611,9 @@ var expectedTests = []string{
 	"test_logsoftmax_negative_axis",
 	"test_lstm_defaults",
 	"test_lstm_with_initial_bias",
-	"test_matmul_4d",
-	"test_matmul_3d",
 	"test_matmul_2d",
+	"test_matmul_3d",
+	"test_matmul_4d",
 	"test_mul",
 	"test_mul_bcast",
 	"test_mul_example",
@@ -509,6 +639,16 @@ var expectedTests = []string{
 	"test_pow_types_int64_int64",
 	"test_prelu_broadcast",
 	"test_prelu_example",
+	"test_reduce_sum_default_axes_keepdims_example",
+	"test_reduce_sum_default_axes_keepdims_random",
+	"test_reduce_sum_do_not_keepdims_example",
+	"test_reduce_sum_do_not_keepdims_random",
+	"test_reduce_sum_empty_axes_input_noop",
+	"test_reduce_sum_empty_axes_input_noop_example",
+	"test_reduce_sum_keepdims_example",
+	"test_reduce_sum_keepdims_random",
+	"test_reduce_sum_negative_axes_keepdims_example",
+	"test_reduce_sum_negative_axes_keepdims_random",
 	"test_relu",
 	"test_reshape_extended_dims",
 	"test_reshape_negative_dim",
@@ -521,27 +661,27 @@ var expectedTests = []string{
 	"test_reshape_zero_dim",
 	"test_rnn_seq_length",
 	"test_shape",
+	"test_sigmoid",
+	"test_sigmoid_example",
 	"test_sin",
 	"test_sin_example",
-	"test_sigmoid_example",
-	"test_sigmoid",
 	"test_sinh",
 	"test_sinh_example",
-	"test_slice_negative_axes",
-	"test_slice_default_steps",
 	"test_slice",
 	"test_slice_default_axes",
+	"test_slice_default_steps",
+	"test_slice_negative_axes",
 	"test_softmax_axis_0",
 	"test_softmax_axis_1",
 	"test_softmax_axis_2",
 	"test_softmax_default_axis",
-	"test_squeeze_negative_axes",
 	"test_softmax_example",
 	"test_softmax_large_number",
 	"test_softmax_negative_axis",
 	"test_sqrt",
 	"test_sqrt_example",
 	"test_squeeze",
+	"test_squeeze_negative_axes",
 	"test_sub",
 	"test_sub_bcast",
 	"test_sub_example",
@@ -549,9 +689,9 @@ var expectedTests = []string{
 	"test_tan_example",
 	"test_tanh",
 	"test_tanh_example",
-	"test_transpose_all_permutations_2",
 	"test_transpose_all_permutations_0",
 	"test_transpose_all_permutations_1",
+	"test_transpose_all_permutations_2",
 	"test_transpose_all_permutations_3",
 	"test_transpose_all_permutations_4",
 	"test_transpose_all_permutations_5",
@@ -573,7 +713,10 @@ var expectedTests = []string{
 }
 
 var opNameMap = map[string]string{
-	"reducemax":  "reduce_max",
-	"reducemin":  "reduce_min",
-	"reducemean": "reduce_mean",
+	"gatherelements":     "gather_elements",
+	"layernormalization": "layer_normalization",
+	"reducemax":          "reduce_max",
+	"reducemean":         "reduce_mean",
+	"reducemin":          "reduce_min",
+	"reducesum":          "reduce_sum",
 }

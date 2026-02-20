@@ -85,11 +85,18 @@ func (r *ReduceSum) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 
 	// For opset >= 13, axes come from the second input tensor.
 	if r.Version() >= 13 && len(inputs) > 1 && inputs[1] != nil {
-		axesData, err := ops.AnyToIntSlice(ops.IfScalarToSlice(inputs[1].Data()))
-		if err != nil {
-			return nil, err
+		// Check if axes tensor is non-empty before reading data.
+		axisSize := 1
+		for _, s := range inputs[1].Shape() {
+			axisSize *= s
 		}
-		axes = axesData
+		if axisSize > 0 {
+			axesData, err := ops.AnyToIntSlice(ops.IfScalarToSlice(inputs[1].Data()))
+			if err != nil {
+				return nil, err
+			}
+			axes = axesData
+		}
 	}
 
 	// If axes is empty and noopWithEmptyAxes, return input as-is.
