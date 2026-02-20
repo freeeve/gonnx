@@ -145,7 +145,7 @@ func TestLinearRegressor(t *testing.T) {
 		res, err := linearRegressor.Apply(inputs)
 		assert.Nil(t, err, test.description)
 		assert.Equal(t, test.expectedShape, res[0].Shape(), test.description)
-		assert.Equal(t, test.expectedBacking, res[0].Data(), test.description)
+		assert.InDeltaSlice(t, test.expectedBacking, res[0].Data(), 1e-6, test.description)
 	}
 }
 

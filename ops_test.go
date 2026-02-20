@@ -179,6 +179,10 @@ type ONNXTestCase struct {
 }
 
 func TestOps(t *testing.T) {
+	if _, err := os.Stat("./test_data"); os.IsNotExist(err) {
+		t.Skip("test_data directory not found; run 'make test_data' to download ONNX test fixtures")
+	}
+
 	runnedTests := []string{}
 
 	for opName := range operators {

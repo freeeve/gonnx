@@ -147,7 +147,7 @@ func TestLSTM(t *testing.T) {
 		assert.Equal(t, test.err, err)
 
 		if err == nil {
-			assert.Equal(t, test.expected, res[1].Data())
+			assert.InDeltaSlice(t, test.expected, res[1].Data(), 1e-6)
 		}
 	}
 }

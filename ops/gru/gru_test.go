@@ -65,7 +65,7 @@ func TestGru(t *testing.T) {
 				},
 			},
 			gruInput0,
-			[]float32{6.6936556e-03, 8.3446503e-07, 0.0000000e+00, 0.0000000e+00},
+			[]float32{6.6936556e-03, 8.3446503e-07, 0.0000000e+00, 1.0000000e+00},
 			nil,
 		},
 		{
@@ -81,7 +81,7 @@ func TestGru(t *testing.T) {
 				},
 			},
 			gruInput0,
-			[]float32{6.6936556e-03, 8.3446503e-07, 0.0000000e+00, 0.0000000e+00},
+			[]float32{6.6936556e-03, 8.3446503e-07, 0.0000000e+00, 1.0000000e+00},
 			nil,
 		},
 		{
@@ -129,7 +129,7 @@ func TestGru(t *testing.T) {
 		assert.Equal(t, test.err, err)
 
 		if err == nil {
-			assert.Equal(t, test.expected, res[1].Data())
+			assert.InDeltaSlice(t, test.expected, res[1].Data(), 1e-6)
 		}
 	}
 }

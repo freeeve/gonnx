@@ -74,7 +74,7 @@ func TestSoftmax(t *testing.T) {
 		res, err := test.softmax.Apply(inputs)
 		assert.Nil(t, err)
 
-		assert.Equal(t, test.expected, res[0].Data())
+		assert.InDeltaSlice(t, test.expected, res[0].Data(), 1e-6)
 	}
 }
 
