@@ -117,6 +117,23 @@ func TestInputValidationTranspose(t *testing.T) {
 	}
 }
 
+func BenchmarkTranspose_Apply(b *testing.B) {
+	trans := &Transpose{perm: []int{1, 0}}
+	input := ops.Float32TensorFixture(64, 64)
+	inputs := []tensor.Tensor{input}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := trans.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func TransposeOnnxNodeProtoFixture() *onnx.NodeProto {
 	return &onnx.NodeProto{
 		Attribute: []*onnx.AttributeProto{

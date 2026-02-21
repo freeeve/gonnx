@@ -129,6 +129,25 @@ func TestInputValidationReshape(t *testing.T) {
 	}
 }
 
+func BenchmarkReshape_Apply(b *testing.B) {
+	reshape := reshapeVersions[13]()
+
+	input := ops.Float32TensorFixture(64, 64)
+	shape := ops.TensorWithBackingFixture([]int64{16, 256}, 2)
+	inputs := []tensor.Tensor{input, shape}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := reshape.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func reshape5BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(5, 2, 2, reshapeTypeConstraints, "reshape")
 }

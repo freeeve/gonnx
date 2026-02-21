@@ -93,6 +93,23 @@ func TestFlatten(t *testing.T) {
 	}
 }
 
+func BenchmarkFlatten_Apply(b *testing.B) {
+	flatten := &Flatten{axis: 1}
+	input := ops.Float32TensorFixture(4, 16, 64)
+	inputs := []tensor.Tensor{input}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := flatten.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func TestInputValidationFlatten(t *testing.T) {
 	tests := []struct {
 		inputs  []tensor.Tensor

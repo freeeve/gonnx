@@ -1,6 +1,7 @@
 package gru
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/advancedclimatesystems/gonnx/onnx"
@@ -328,4 +329,49 @@ func GRUOnnxNodeProtoFixture() *onnx.NodeProto {
 
 func gru7BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(7, 3, 6, gruTypeConstraints, "gru")
+}
+
+func BenchmarkGRU_Apply(b *testing.B) {
+	hiddenSize := 64
+	inputSize := 32
+	seqLen := 10
+	batchSize := 4
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		node := &onnx.NodeProto{
+			Attribute: []*onnx.AttributeProto{
+				{Name: "activation_alpha", Floats: []float32{}},
+				{Name: "activation_beta", Floats: []float32{}},
+				{Name: "activations", Strings: [][]byte{[]byte("sigmoid"), []byte("tanh")}},
+				{Name: "direction", S: []byte("forward")},
+				{Name: "hidden_size", I: int64(hiddenSize)},
+				{Name: "linear_before_reset", I: 1},
+			},
+		}
+
+		gru := gruVersions[int64(7)]()
+		err := gru.Init(node)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		r := rand.New(rand.NewSource(42))
+		inputs := []tensor.Tensor{
+			ops.RandomFloat32TensorFixture(r, seqLen, batchSize, inputSize),
+			ops.RandomFloat32TensorFixture(r, 1, 3*hiddenSize, inputSize),
+			ops.RandomFloat32TensorFixture(r, 1, 3*hiddenSize, hiddenSize),
+			ops.RandomFloat32TensorFixture(r, 1, 6*hiddenSize),
+			nil,
+			ops.TensorWithBackingFixture(ops.Zeros(batchSize*hiddenSize), 1, batchSize, hiddenSize),
+		}
+
+		y, err := gru.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
 }

@@ -138,6 +138,40 @@ func TestInputValidationGatherElements(t *testing.T) {
 	}
 }
 
+func BenchmarkGatherElements_Apply(b *testing.B) {
+	ge := gatherElementsVersions[13]()
+	err := ge.Init(&onnx.NodeProto{
+		Attribute: []*onnx.AttributeProto{
+			{Name: "axis", I: 1},
+		},
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	data := ops.Float32TensorFixture(64, 64)
+
+	// Build valid indices: same shape as data, values in [0, 64).
+	idxBacking := make([]int32, 64*64)
+	for i := range idxBacking {
+		idxBacking[i] = int32(i % 64)
+	}
+	indices := ops.TensorWithBackingFixture(idxBacking, 64, 64)
+
+	inputs := []tensor.Tensor{data, indices}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := ge.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func gatherElements13BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(13, 2, 2, gatherElementsTypeConstraints, "gatherelements")
 }

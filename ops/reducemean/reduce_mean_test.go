@@ -322,6 +322,33 @@ func TestInputValidationReduceMean(t *testing.T) {
 	}
 }
 
+func BenchmarkReduceMean_Apply(b *testing.B) {
+	rm := reduceMeanVersions[13]()
+	err := rm.Init(&onnx.NodeProto{
+		Attribute: []*onnx.AttributeProto{
+			{Name: "axes", Ints: []int64{1}},
+			{Name: "keepdims", I: 1},
+		},
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	input := ops.Float32TensorFixture(8, 256, 256)
+	inputs := []tensor.Tensor{input}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := rm.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func reduceMean13BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(13, 1, 1, reduceMeanTypeConstraints, "reducemean")
 }

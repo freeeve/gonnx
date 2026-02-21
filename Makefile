@@ -1,4 +1,4 @@
-.PHONY: build test
+.PHONY: build test bench bench_allocs bench_pprof
 
 VERSION=$(shell git describe --always --tags --dirty)
 LDFLAGS=-ldflags "-s -w -X main.Version=${VERSION}"
@@ -20,6 +20,9 @@ help:
 	$(call echotask,"help","Shows this page.")
 	$(call echotask,"lint","Runs the GOLANGCI linter.")
 	$(call echotask,"test","Runs the Go tests.")
+	$(call echotask,"bench","Runs all benchmarks with allocation reporting.")
+	$(call echotask,"bench_allocs","Runs benchmarks focused on allocation counts.")
+	$(call echotask,"bench_pprof","Generates CPU and memory pprof profiles.")
 	$(call echotask,"test_data","Downloads data for the ONNX test suite.")
 	$(call echotask,"install","Install project dependencies.")
 	$(call echotask,"install_lint","Install the Go linter.")
@@ -63,6 +66,18 @@ install_lint: ## Install the linter.
 install_gotestsum: ## Install a tool for prettier test output.
 	curl -sfL https://github.com/gotestyourself/gotestsum/releases/download/v1.9.0/gotestsum_1.9.0_linux_amd64.tar.gz \
 	    | tar -C $(shell go env GOPATH)/bin -zxf - gotestsum
+
+bench: ## Run all benchmarks with allocation reporting.
+	@ ${BUILD_PARAMS} go test -bench=. -benchmem -run=^$$ -timeout=300s ${TEST}
+
+bench_allocs: ## Run benchmarks focused on allocation counts.
+	@ ${BUILD_PARAMS} go test -bench=. -benchmem -run=^$$ -count=5 -timeout=600s ${TEST} | tee bench_results.txt
+
+bench_pprof: ## Generate CPU and memory pprof profiles.
+	@ ${BUILD_PARAMS} go test -bench=. -run=^$$ -cpuprofile=cpu.prof -memprofile=mem.prof -timeout=300s .
+	@echo "CPU profile: cpu.prof"
+	@echo "Memory profile: mem.prof"
+	@echo "Analyze with: go tool pprof -top cpu.prof"
 
 build_all: build_amd64 build_arm64
 

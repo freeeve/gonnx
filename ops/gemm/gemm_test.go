@@ -249,6 +249,37 @@ func TestInputValidationGemm(t *testing.T) {
 	}
 }
 
+func BenchmarkGemm_Apply(b *testing.B) {
+	gemm := &Gemm{}
+	node := &onnx.NodeProto{
+		Attribute: []*onnx.AttributeProto{
+			{Name: "alpha", F: 1.0},
+			{Name: "beta", F: 1.0},
+			{Name: "transA", I: 0},
+			{Name: "transB", I: 0},
+		},
+	}
+	err := gemm.Init(node)
+	if err != nil {
+		b.Fatal(err)
+	}
+	A := ops.Float32TensorFixture(128, 64)
+	B := ops.Float32TensorFixture(64, 128)
+	C := ops.Float32TensorFixture(128)
+	inputs := []tensor.Tensor{A, B, C}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := gemm.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func GemmOnnxNodeProtoFixture() *onnx.NodeProto {
 	return &onnx.NodeProto{
 		Attribute: []*onnx.AttributeProto{

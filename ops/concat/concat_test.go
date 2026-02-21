@@ -73,6 +73,29 @@ func TestConcat(t *testing.T) {
 	}
 }
 
+func BenchmarkConcat_Apply(b *testing.B) {
+	concat := concatVersions[13]()
+	err := concat.Init(&onnx.NodeProto{Attribute: []*onnx.AttributeProto{{Name: "axis", I: 0}}})
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	input1 := ops.Float32TensorFixture(64, 64)
+	input2 := ops.Float32TensorFixture(64, 64)
+	inputs := []tensor.Tensor{input1, input2}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := concat.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func TestInputValidationConcat(t *testing.T) {
 	tests := []struct {
 		version int64

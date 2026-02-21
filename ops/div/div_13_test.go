@@ -142,6 +142,24 @@ func TestInputValidationDiv(t *testing.T) {
 	}
 }
 
+func BenchmarkDiv_Apply(b *testing.B) {
+	div := &Div{}
+	A := ops.Float32TensorFixture(256, 256)
+	B := ops.Float32TensorFixture(256, 256)
+	inputs := []tensor.Tensor{A, B}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := div.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func div13BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(13, 2, 2, divTypeConstraints, "div")
 }

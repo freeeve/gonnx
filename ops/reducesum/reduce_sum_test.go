@@ -206,6 +206,33 @@ func TestInputValidationReduceSum(t *testing.T) {
 	}
 }
 
+func BenchmarkReduceSum_Apply(b *testing.B) {
+	rs := reduceSumVersions[11]()
+	err := rs.Init(&onnx.NodeProto{
+		Attribute: []*onnx.AttributeProto{
+			{Name: "axes", Ints: []int64{1}},
+			{Name: "keepdims", I: 1},
+		},
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	input := ops.Float32TensorFixture(8, 256, 256)
+	inputs := []tensor.Tensor{input}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := rs.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func reduceSum13BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(13, 1, 2, reduceSumV13TypeConstraints, "reducesum")
 }

@@ -123,6 +123,25 @@ func TestInputValidationRelu(t *testing.T) {
 	}
 }
 
+func BenchmarkRelu_Apply(b *testing.B) {
+	relu := &Relu{
+		BaseOperator: ops.NewBaseOperator(13, 1, 1, reluTypeConstraints, "relu"),
+	}
+	input := ops.Float32TensorFixture(256, 256)
+	inputs := []tensor.Tensor{input}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := relu.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func relu6BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(6, 1, 1, reluTypeConstraints, "relu")
 }

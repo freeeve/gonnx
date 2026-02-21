@@ -740,3 +740,57 @@ func ConvUnsupportedOnnxNodeProtoFixture() *onnx.NodeProto {
 func conv11BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(11, 2, 3, convTypeConstraints, "conv")
 }
+
+func BenchmarkConv_Apply(b *testing.B) {
+	// X: (batch=1, channels=3, height=32, width=32)
+	xBacking := make([]float32, 1*3*32*32)
+	for i := range xBacking {
+		xBacking[i] = float32(i) * 0.001
+	}
+
+	// W: (filters=16, inChannels=3, kH=3, kW=3)
+	wBacking := make([]float32, 16*3*3*3)
+	for i := range wBacking {
+		wBacking[i] = float32(i) * 0.01
+	}
+
+	// B: (16)
+	bBacking := make([]float32, 16)
+	for i := range bBacking {
+		bBacking[i] = 0.1
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		node := &onnx.NodeProto{
+			Attribute: []*onnx.AttributeProto{
+				{Name: "auto_pad", S: []byte("NOTSET")},
+				{Name: "dilations", Ints: []int64{}},
+				{Name: "group", I: 1},
+				{Name: "kernel_shape", Ints: []int64{3, 3}},
+				{Name: "pads", Ints: []int64{0, 0, 0, 0}},
+				{Name: "strides", Ints: []int64{1, 1}},
+			},
+		}
+
+		conv := convVersions[int64(11)]()
+		err := conv.Init(node)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		inputs := []tensor.Tensor{
+			ops.TensorWithBackingFixture(xBacking, 1, 3, 32, 32),
+			ops.TensorWithBackingFixture(wBacking, 16, 3, 3, 3),
+			ops.TensorWithBackingFixture(bBacking, 16),
+		}
+
+		y, err := conv.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}

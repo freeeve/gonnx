@@ -110,6 +110,23 @@ func TestInputValidationTanh(t *testing.T) {
 	}
 }
 
+func BenchmarkTanh_Apply(b *testing.B) {
+	th := &Tanh{}
+	input := ops.Float32TensorFixture(256, 256)
+	inputs := []tensor.Tensor{input}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := th.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func tanh6BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(6, 1, 1, tanhTypeConstraint, "tanh")
 }

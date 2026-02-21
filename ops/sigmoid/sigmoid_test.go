@@ -123,6 +123,23 @@ func TestInputValidationSigmoid(t *testing.T) {
 	}
 }
 
+func BenchmarkSigmoid_Apply(b *testing.B) {
+	sigmoid := &Sigmoid{}
+	input := ops.Float32TensorFixture(256, 256)
+	inputs := []tensor.Tensor{input}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := sigmoid.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func sigmoid6BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(6, 1, 1, sigmoidTypeConstraints, "sigmoid")
 }

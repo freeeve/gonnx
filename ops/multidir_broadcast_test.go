@@ -7,6 +7,36 @@ import (
 	"gorgonia.org/tensor"
 )
 
+func BenchmarkMultidirectionalBroadcast(b *testing.B) {
+	benchmarks := []struct {
+		name   string
+		shapeA []int
+		shapeB []int
+	}{
+		{"SameShape", []int{256, 256}, []int{256, 256}},
+		{"ScalarBroadcast", []int{256, 256}, []int{1}},
+		{"RowBroadcast", []int{256, 256}, []int{1, 256}},
+		{"3D", []int{8, 64, 64}, []int{1, 64, 64}},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			A := Float32TensorFixture(bm.shapeA...)
+			B := Float32TensorFixture(bm.shapeB...)
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				_, _, err := MultidirectionalBroadcast(A, B)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func TestMultidirectionalBroadcast(t *testing.T) {
 	tests := []struct {
 		shapes        [][]int

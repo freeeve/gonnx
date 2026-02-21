@@ -134,6 +134,24 @@ func TestKeepDim(t *testing.T) {
 	assert.Equal(t, true, keepDim(0, []int{1, 3}))
 }
 
+func BenchmarkSqueeze_Apply(b *testing.B) {
+	squeeze := squeezeVersions[13]()
+	input := ops.Float32TensorFixture(1, 64, 1, 64)
+	axes := ops.TensorWithBackingFixture([]int64{0, 2}, 2)
+	inputs := []tensor.Tensor{input, axes}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := squeeze.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func TestInputValidationSqueeze(t *testing.T) {
 	tests := []struct {
 		version  int64

@@ -237,6 +237,24 @@ func TestInputValidationMatMul(t *testing.T) {
 	}
 }
 
+func BenchmarkMatMul_Apply(b *testing.B) {
+	matmul := &MatMul{}
+	A := ops.Float32TensorFixture(128, 64)
+	B := ops.Float32TensorFixture(64, 128)
+	inputs := []tensor.Tensor{A, B}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := matmul.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func matmul1BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(
 		1,

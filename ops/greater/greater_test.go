@@ -151,6 +151,24 @@ func TestInputValidationGreater(t *testing.T) {
 	}
 }
 
+func BenchmarkGreater_Apply(b *testing.B) {
+	g := greaterVersions[13]()
+	A := ops.Float32TensorFixture(256, 256)
+	B := ops.Float32TensorFixture(256, 256)
+	inputs := []tensor.Tensor{A, B}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := g.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func greater7BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(7, 2, 2, greater7TypeConstraints, "greater")
 }

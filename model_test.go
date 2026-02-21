@@ -204,6 +204,75 @@ func expectedGruHiddenOut() []float32 {
 	return []float32{0.45711097, 1, 0.9258882, -1, 1}
 }
 
+func BenchmarkModelRun_MLP(b *testing.B) {
+	model, err := NewModelFromFile("./sample_models/onnx_models/mlp.onnx")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	inputs := tensorsFixture(
+		[]string{"data_input"},
+		[][]int{{2, 3}},
+		[][]float32{rangeFloat(6)},
+	)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := model.Run(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkModelRun_GRU(b *testing.B) {
+	model, err := NewModelFromFile("./sample_models/onnx_models/gru.onnx")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		inputs := tensorsFixture(
+			[]string{"data_input", "init_hidden"},
+			[][]int{{1, 30, 3}, {1, 1, 5}},
+			[][]float32{rangeFloat(90), rangeZeros(5)},
+		)
+
+		_, err := model.Run(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkModelRun_NDM(b *testing.B) {
+	model, err := NewModelFromFile("./sample_models/onnx_models/ndm.onnx")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	inputs := tensorsFixture(
+		[]string{"sensor_input", "setpoint_input"},
+		[][]int{{1, 18, 4}, {1, 1}},
+		[][]float32{rangeFloat(72), rangeFloat(1)},
+	)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := model.Run(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func expectedGruPredsOut() []float32 {
 	return []float32{
 		0.254439, 0.39027894, 0.12178477, 0.24339758, 0.39764592,

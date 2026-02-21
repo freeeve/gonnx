@@ -150,6 +150,24 @@ func TestInputValidationLess(t *testing.T) {
 	}
 }
 
+func BenchmarkLess_Apply(b *testing.B) {
+	l := lessVersions[13]()
+	A := ops.Float32TensorFixture(256, 256)
+	B := ops.Float32TensorFixture(256, 256)
+	inputs := []tensor.Tensor{A, B}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := l.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func less7BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(7, 2, 2, less7TypeConstraints, "less")
 }

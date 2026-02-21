@@ -174,6 +174,23 @@ func TestInputValidationSoftmax(t *testing.T) {
 	}
 }
 
+func BenchmarkSoftmax_Apply(b *testing.B) {
+	softmax := &Softmax{axis: -1}
+	input := ops.Float32TensorFixture(256, 256)
+	inputs := []tensor.Tensor{input}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := softmax.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func softmax1BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(1, 1, 1, softmaxTypeConstraints, "softmax")
 }

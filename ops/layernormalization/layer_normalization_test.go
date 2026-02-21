@@ -149,6 +149,36 @@ func TestInputValidationLayerNormalization(t *testing.T) {
 	}
 }
 
+func BenchmarkLayerNormalization_Apply(b *testing.B) {
+	ln := layerNormVersions[17]()
+	err := ln.Init(&onnx.NodeProto{
+		Attribute: []*onnx.AttributeProto{
+			{Name: "axis", I: -1},
+			{Name: "epsilon", F: 1e-5},
+		},
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	x := ops.Float32TensorFixture(4, 64, 128)
+	scale := ops.Float32TensorFixture(128)
+	bias := ops.Float32TensorFixture(128)
+
+	inputs := []tensor.Tensor{x, scale, bias}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := ln.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func layerNorm17BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(17, 2, 3, layerNormTypeConstraints, "layernormalization")
 }

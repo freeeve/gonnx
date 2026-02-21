@@ -7,6 +7,45 @@ import (
 	"gorgonia.org/tensor"
 )
 
+func BenchmarkNElements(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = NElements(3, 256, 256)
+	}
+}
+
+func BenchmarkAnyToIntSlice(b *testing.B) {
+	data := make([]int64, 1024)
+	for i := range data {
+		data[i] = int64(i)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := AnyToIntSlice(data)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkPairwiseAssign(b *testing.B) {
+	t1 := tensor.New(tensor.WithShape(64, 64), tensor.WithBacking(Zeros(64*64)))
+	t2 := Float32TensorFixture(64, 64)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		err := PairwiseAssign(t1, t2)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestAbs(t *testing.T) {
 	tests := []struct {
 		in       int

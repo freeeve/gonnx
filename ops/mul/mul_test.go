@@ -164,6 +164,24 @@ func TestInputValidationMul(t *testing.T) {
 	}
 }
 
+func BenchmarkMul_Apply(b *testing.B) {
+	mul := &Mul{}
+	A := ops.Float32TensorFixture(256, 256)
+	B := ops.Float32TensorFixture(256, 256)
+	inputs := []tensor.Tensor{A, B}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := mul.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func mul7BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(7, 2, 2, mulTypeConstraints, "mul")
 }

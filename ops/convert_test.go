@@ -3,9 +3,24 @@ package ops
 import (
 	"testing"
 
+	"github.com/advancedclimatesystems/gonnx/onnx"
 	"github.com/stretchr/testify/assert"
 	"gorgonia.org/tensor"
 )
+
+func BenchmarkConvertTensorDtype(b *testing.B) {
+	t := Float32TensorFixture(256, 256)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := ConvertTensorDtype(t, int32(onnx.TensorProto_DOUBLE))
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
 
 func TestConvertTensorDtype(t *testing.T) {
 	tests := []struct {
