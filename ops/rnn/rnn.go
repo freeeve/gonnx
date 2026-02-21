@@ -3,7 +3,6 @@ package rnn
 import (
 	"github.com/advancedclimatesystems/gonnx/onnx"
 	"github.com/advancedclimatesystems/gonnx/ops"
-	"github.com/advancedclimatesystems/gonnx/ops/gemm"
 	"gorgonia.org/tensor"
 )
 
@@ -128,17 +127,45 @@ func (r *RNN) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 		return nil, err
 	}
 
+	// Pre-transpose weight matrices once (transB=1).
+	Wit, err := tensor.Transpose(Wi)
+	if err != nil {
+		return nil, err
+	}
+
+	Rit, err := tensor.Transpose(Ri)
+	if err != nil {
+		return nil, err
+	}
+
+	// Combine W+R biases and expand to (batch, hidden) once before the loop.
+	bias, err := tensor.Add(Wbi, Rbi)
+	if err != nil {
+		return nil, err
+	}
+
+	bias, err = expandBias(bias, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	inputSize := X.Shape()[2]
 	outputs := []tensor.Tensor{}
 
 	// Loop over all timesteps of the input, applying the RNN calculation to every
 	// timesteps while updating the hidden tensor.
-	for t := 0; t < seqLength; t++ {
+	for t := range seqLength {
 		Xt, err := X.Slice(ops.NewSlicer(t, t+1), nil, nil)
 		if err != nil {
 			return nil, err
 		}
 
-		Ht, err = r.layerCalculation(Xt, Ht, Wi, Ri, Wbi, Rbi, activation)
+		// Reshape from (1, batch, input) to (batch, input) so MatMul produces 2D results.
+		if err = Xt.Reshape(batchSize, inputSize); err != nil {
+			return nil, err
+		}
+
+		Ht, err = r.layerCalcDirect(Xt, Ht, Wit, Rit, bias, activation)
 		if err != nil {
 			return nil, err
 		}
@@ -173,48 +200,46 @@ func (r *RNN) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	return []tensor.Tensor{Y, Yh}, nil
 }
 
-// layerCalculation performs the actual RNN calculation. By ONNX definition
-// this is:
-//
-//	Ht = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
-//
-// We achieve this by two Gemm operations, adding them together and finally
-// putting them through an activation function.
-func (r *RNN) layerCalculation(
-	Xt, H, Wi, Ri, Wbi, Rbi tensor.Tensor, activation ops.Activation,
+// layerCalcDirect computes the RNN layer using pre-transposed weights and combined bias.
+// Ht = activation(Xt @ Wi^T + Ht-1 @ Ri^T + bias)
+func (r *RNN) layerCalcDirect(
+	Xt, H, Wit, Rit, bias tensor.Tensor, activation ops.Activation,
 ) (tensor.Tensor, error) {
-	gemm := gemm.GetVersions()[13]()
-
-	err := gemm.Init(
-		&onnx.NodeProto{
-			Attribute: []*onnx.AttributeProto{
-				{Name: "alpha", F: 1.0},
-				{Name: "beta", F: 1.0},
-				{Name: "transA", I: 0},
-				{Name: "transB", I: 1},
-			},
-		},
-	)
+	inputCalc, err := tensor.MatMul(Xt, Wit)
 	if err != nil {
 		return nil, err
 	}
 
-	inputCalc, err := gemm.Apply([]tensor.Tensor{Xt, Wi, Wbi})
+	hiddenCalc, err := tensor.MatMul(H, Rit)
 	if err != nil {
 		return nil, err
 	}
 
-	hiddenCalc, err := gemm.Apply([]tensor.Tensor{H, Ri, Rbi})
+	sum, err := tensor.Add(inputCalc, hiddenCalc)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := tensor.Add(inputCalc[0], hiddenCalc[0])
+	result, err := tensor.Add(sum, bias)
 	if err != nil {
 		return nil, err
 	}
 
 	return activation(result)
+}
+
+// expandBias reshapes a 1D bias (hidden) to (1, hidden) and repeats to (batchSize, hidden).
+func expandBias(bias tensor.Tensor, batchSize int) (tensor.Tensor, error) {
+	hidden := bias.Shape()[0]
+	if err := bias.Reshape(1, hidden); err != nil {
+		return nil, err
+	}
+
+	if batchSize > 1 {
+		return tensor.Repeat(bias, 0, batchSize)
+	}
+
+	return bias, nil
 }
 
 // getWeights returns the weights from a concatenated weight tensor. The result is
