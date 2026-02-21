@@ -61,17 +61,29 @@ func Sigmoid(X tensor.Tensor) (tensor.Tensor, error) {
 	return tensor.Div(typedOne, buf)
 }
 
-// ReLU performs the ReLU operation on a tensor.
+// ReLU performs the ReLU operation on a tensor using direct backing array manipulation.
 func ReLU(X tensor.Tensor) (tensor.Tensor, error) {
-	typedZero, err := GetValueAsTensorType(0.0, X.Dtype())
-	if err != nil {
-		return nil, err
+	out, ok := X.Clone().(tensor.Tensor)
+	if !ok {
+		return nil, ErrTypeAssert("tensor.Tensor", X.Clone())
 	}
 
-	comparison, err := tensor.Gt(X, typedZero, tensor.AsSameType())
-	if err != nil {
-		return nil, err
+	switch X.Dtype() {
+	case tensor.Float32:
+		reluTyped(out.Data().([]float32))
+	case tensor.Float64:
+		reluTyped(out.Data().([]float64))
+	default:
+		return nil, ErrCast
 	}
 
-	return tensor.Mul(X, comparison)
+	return out, nil
+}
+
+func reluTyped[T FloatType](d []T) {
+	for i, v := range d {
+		if v < 0 {
+			d[i] = 0
+		}
+	}
 }

@@ -320,15 +320,41 @@ func (c *Conv) getNewCoordsAfterDilation(oldCoords []int) []int {
 	return newCoords
 }
 
-// Applies 1D convolution to tensor X with the 'kernel' tensor.
-// X will have 3 dimensions: [N, C, H] where N is the batch size, C is the number
-// of channels and H is the number of dimensions on which to apply the convolutions.
-// The kernel will have shape [kernelDim], where 'kernelDim' is the size of the kernel
-// size of the kernel.
+// prepareKernelMatrix clones the kernel, broadcasts channels to match inputC if needed,
+// reshapes to [M, inputC * prod(kernelShape)], and transposes to [inputC * prod(kernelShape), M].
+func (c *Conv) prepareKernelMatrix(kernel tensor.Tensor, inputC int) (tensor.Tensor, error) {
+	kData, ok := kernel.Clone().(tensor.Tensor)
+	if !ok {
+		return nil, ops.ErrTypeAssert("tensor.Tensor", kernel.Clone())
+	}
+
+	kernelC := kernel.Shape()[1]
+	if kernelC < inputC {
+		var err error
+		kData, err = tensor.Repeat(kData, 1, inputC/kernelC)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	nKernels := kernel.Shape()[0]
+	spatialSize := 1
+	for _, ks := range c.kernelShape {
+		spatialSize *= ks
+	}
+
+	flatCols := inputC * spatialSize
+	if err := kData.Reshape(nKernels, flatCols); err != nil {
+		return nil, err
+	}
+
+	return tensor.Transpose(kData)
+}
+
+// applyConv1D applies 1D convolution using im2col + MatMul.
+// X has shape [N, C, H], kernel has shape [M, C, kH].
 func (c *Conv) applyConv1D(x, kernel tensor.Tensor) (tensor.Tensor, error) {
 	outputShape := c.getOutputShape(x, kernel)
-	out := tensor.Tensor(tensor.NewDense(x.Dtype(), outputShape))
-	out.Zero()
 
 	paddedX, err := c.padInput(x)
 	if err != nil {
@@ -336,67 +362,42 @@ func (c *Conv) applyConv1D(x, kernel tensor.Tensor) (tensor.Tensor, error) {
 	}
 
 	nBatches := x.Shape()[0]
+	inputC := paddedX.Shape()[1]
 	nKernels := kernel.Shape()[0]
-	strideSize := c.strides[0]
-	outputHDim := outputShape[nNonSpatialDims]
+	outH := outputShape[nNonSpatialDims]
 
-	for batchIdx := 0; batchIdx < nBatches; batchIdx++ {
-		for kernelIdx := 0; kernelIdx < nKernels; kernelIdx++ {
-			subKernelView, err := kernel.Slice(ops.NewSlicer(kernelIdx, kernelIdx+1))
-			if err != nil {
-				return nil, err
-			}
+	// Prepare kernel matrix: broadcast channels if needed, reshape [M, C*kH], then transpose.
+	kernelT, err := c.prepareKernelMatrix(kernel, inputC)
+	if err != nil {
+		return nil, err
+	}
 
-			subKernel := subKernelView.Materialize()
+	out := tensor.NewDense(x.Dtype(), outputShape)
 
-			for h := 0; h < paddedX.Shape()[2]; h += strideSize {
-				dimHOutputIdx := h / strideSize
-				if dimHOutputIdx >= outputHDim {
-					continue
-				}
+	for batchIdx := range nBatches {
+		colMatrix, err := im2col1D(paddedX, batchIdx, c.kernelShape, c.strides, outH)
+		if err != nil {
+			return nil, err
+		}
 
-				subImage, err := c.getSubImage(paddedX, batchIdx, h)
-				if err != nil {
-					return nil, err
-				}
+		// colMatrix [outH, C*kH] @ kernelT [C*kH, M] -> result [outH, M]
+		result, err := tensor.MatMul(colMatrix, kernelT)
+		if err != nil {
+			return nil, err
+		}
 
-				subImage, subKernel, err = ops.UnidirectionalBroadcast(subImage, subKernel)
-				if err != nil {
-					return nil, err
-				}
-
-				convResult, err := tensor.Mul(subImage, subKernel)
-				if err != nil {
-					return nil, err
-				}
-
-				convValue, err := tensor.Sum(convResult)
-				if err != nil {
-					return nil, err
-				}
-
-				err = out.SetAt(convValue.ScalarValue(), batchIdx, kernelIdx, dimHOutputIdx)
-				if err != nil {
-					return nil, err
-				}
-			}
+		if err := c.copyResultToOutput1D(out, result, batchIdx, nKernels, outH); err != nil {
+			return nil, err
 		}
 	}
 
 	return out, nil
 }
 
-// Applies 2D convolution to tensor X with the 'kernel' tensor.
-// X will have 4 dimensions: [N, C, H, W] where N is the batch size, C is the number
-// of channels, H and W are the height and width dimensions on which to apply the convolutions.
-// The kernel will have shape [M, C, H, W].
+// applyConv2D applies 2D convolution using im2col + MatMul.
+// X has shape [N, C, H, W], kernel has shape [M, C, kH, kW].
 func (c *Conv) applyConv2D(x, kernel tensor.Tensor) (tensor.Tensor, error) {
 	outputShape := c.getOutputShape(x, kernel)
-	out := tensor.Tensor(tensor.NewDense(x.Dtype(), outputShape))
-	out.Zero()
-
-	outputHDim := outputShape[nNonSpatialDims]
-	outputWDim := outputShape[nNonSpatialDims+1]
 
 	paddedX, err := c.padInput(x)
 	if err != nil {
@@ -404,57 +405,33 @@ func (c *Conv) applyConv2D(x, kernel tensor.Tensor) (tensor.Tensor, error) {
 	}
 
 	nBatches := x.Shape()[0]
+	inputC := paddedX.Shape()[1]
 	nKernels := kernel.Shape()[0]
+	outH := outputShape[nNonSpatialDims]
+	outW := outputShape[nNonSpatialDims+1]
 
-	for batchIdx := 0; batchIdx < nBatches; batchIdx++ {
-		for kernelIdx := 0; kernelIdx < nKernels; kernelIdx++ {
-			subKernelView, err := kernel.Slice(ops.NewSlicer(kernelIdx, kernelIdx+1))
-			if err != nil {
-				return nil, err
-			}
+	// Prepare kernel matrix: broadcast channels if needed, reshape [M, C*kH*kW], then transpose.
+	kernelT, err := c.prepareKernelMatrix(kernel, inputC)
+	if err != nil {
+		return nil, err
+	}
 
-			subKernel := subKernelView.Materialize()
+	out := tensor.NewDense(x.Dtype(), outputShape)
 
-			// Loop over all 2D subImages of the input image and compute the convolution
-			// for that subImage. Store the result at the right place in the output tensor.
-			for h := 0; h < paddedX.Shape()[2]; h += c.strides[0] {
-				dimHOutputIdx := h / c.strides[0]
-				if dimHOutputIdx >= outputHDim {
-					continue
-				}
+	for batchIdx := range nBatches {
+		colMatrix, err := im2col2D(paddedX, batchIdx, c.kernelShape, c.strides, outH, outW)
+		if err != nil {
+			return nil, err
+		}
 
-				for w := 0; w < paddedX.Shape()[2]; w += c.strides[1] {
-					dimWOutputIdx := w / c.strides[1]
-					if dimWOutputIdx >= outputWDim {
-						continue
-					}
+		// colMatrix [outH*outW, C*kH*kW] @ kernelT [C*kH*kW, M] -> result [outH*outW, M]
+		result, err := tensor.MatMul(colMatrix, kernelT)
+		if err != nil {
+			return nil, err
+		}
 
-					subImage, err := c.getSubImage(paddedX, batchIdx, h, w)
-					if err != nil {
-						return nil, err
-					}
-
-					subImage, subKernel, err = ops.UnidirectionalBroadcast(subImage, subKernel)
-					if err != nil {
-						return nil, err
-					}
-
-					convResult, err := tensor.Mul(subImage, subKernel)
-					if err != nil {
-						return nil, err
-					}
-
-					convValue, err := tensor.Sum(convResult)
-					if err != nil {
-						return nil, err
-					}
-
-					err = out.SetAt(convValue.ScalarValue(), batchIdx, kernelIdx, dimHOutputIdx, dimWOutputIdx)
-					if err != nil {
-						return nil, err
-					}
-				}
-			}
+		if err := c.copyResultToOutput2D(out, result, batchIdx, nKernels, outH, outW); err != nil {
+			return nil, err
 		}
 	}
 
@@ -523,31 +500,56 @@ func (c *Conv) padInput(x tensor.Tensor) (tensor.Tensor, error) {
 	return x, nil
 }
 
-// getSubImage returns a the subimage for a specific example in the batch, based on the
-// kernel shape and the given start coordinates. The resulting sub image will be of
-// shape [C, kernelShape[0], kernelShape[1], ...].
-func (c *Conv) getSubImage(x tensor.Tensor, batchIdx int, startSpatialCoords ...int) (tensor.Tensor, error) {
-	if len(startSpatialCoords) != len(c.kernelShape) {
-		return nil, ops.ErrDimension("expected the coordinates to have the same number of dimensions as the kernel")
+// copyResultToOutput1D copies a MatMul result [outH, M] into the output tensor [N, M, outH]
+// at the given batch index. The result layout is row-major: result[h][m].
+// The output layout is [batchIdx, kernelIdx, h].
+func (c *Conv) copyResultToOutput1D(out *tensor.Dense, result tensor.Tensor, batchIdx, nKernels, outH int) error {
+	switch out.Dtype() {
+	case tensor.Float32:
+		copyResult1DTyped(out.Data().([]float32), result.Data().([]float32), batchIdx, nKernels, outH)
+	case tensor.Float64:
+		copyResult1DTyped(out.Data().([]float64), result.Data().([]float64), batchIdx, nKernels, outH)
+	default:
+		return ops.ErrCast
 	}
 
-	slices := []tensor.Slice{
-		ops.NewSlicer(batchIdx, batchIdx+1),
-		nil, // Take all channels at once.
+	return nil
+}
+
+func copyResult1DTyped[T ops.FloatType](outData, resData []T, batchIdx, nKernels, outH int) {
+	batchOffset := batchIdx * nKernels * outH
+
+	for h := range outH {
+		for m := range nKernels {
+			outData[batchOffset+m*outH+h] = resData[h*nKernels+m]
+		}
+	}
+}
+
+// copyResultToOutput2D copies a MatMul result [outH*outW, M] into the output tensor [N, M, outH, outW]
+// at the given batch index.
+func (c *Conv) copyResultToOutput2D(out *tensor.Dense, result tensor.Tensor, batchIdx, nKernels, outH, outW int) error {
+	switch out.Dtype() {
+	case tensor.Float32:
+		copyResult2DTyped(out.Data().([]float32), result.Data().([]float32), batchIdx, nKernels, outH, outW)
+	case tensor.Float64:
+		copyResult2DTyped(out.Data().([]float64), result.Data().([]float64), batchIdx, nKernels, outH, outW)
+	default:
+		return ops.ErrCast
 	}
 
-	for i := 0; i < len(c.kernelShape); i++ {
-		dimStartIdx := startSpatialCoords[i]
-		dimKernelSize := c.kernelShape[i]
-		slices = append(slices, ops.NewSlicer(dimStartIdx, dimStartIdx+dimKernelSize))
-	}
+	return nil
+}
 
-	subImage, err := x.Slice(slices...)
-	if err != nil {
-		return nil, err
-	}
+func copyResult2DTyped[T ops.FloatType](outData, resData []T, batchIdx, nKernels, outH, outW int) {
+	spatialSize := outH * outW
+	batchOffset := batchIdx * nKernels * spatialSize
 
-	return subImage.Materialize(), nil
+	for hw := range spatialSize {
+		for m := range nKernels {
+			outData[batchOffset+m*spatialSize+hw] = resData[hw*nKernels+m]
+		}
+	}
 }
 
 // addBias adds a bias to the output of the convolution. It reshapes the
