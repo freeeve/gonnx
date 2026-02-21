@@ -157,7 +157,9 @@ func (m *Model) Run(inputs Tensors) (Tensors, error) {
 		return nil, err
 	}
 
-	tensors := make(Tensors)
+	nodes := m.mp.Graph.GetNode()
+	tensors := make(Tensors, len(inputs)+len(m.parameters)+len(nodes))
+
 	for inputName, inputTensor := range inputs {
 		tensors[inputName] = inputTensor
 	}
@@ -166,7 +168,7 @@ func (m *Model) Run(inputs Tensors) (Tensors, error) {
 		tensors[parameterName] = parameterTensor
 	}
 
-	for _, n := range m.mp.Graph.GetNode() {
+	for _, n := range nodes {
 		op, ok := m.Opset[n.GetOpType()]
 		if !ok {
 			return nil, ops.ErrUnknownOperatorType(n.GetOpType())
@@ -177,8 +179,10 @@ func (m *Model) Run(inputs Tensors) (Tensors, error) {
 		}
 	}
 
-	outputTensors := make(Tensors)
-	for _, outputName := range m.OutputNames() {
+	outputNames := m.OutputNames()
+	outputTensors := make(Tensors, len(outputNames))
+
+	for _, outputName := range outputNames {
 		outputTensors[outputName] = tensors[outputName]
 	}
 
@@ -246,7 +250,7 @@ func (m *Model) validateShapes(inputTensors Tensors) error {
 }
 
 func getInputTensorsForNode(names []string, tensors Tensors) ([]tensor.Tensor, error) {
-	var inputTensors []tensor.Tensor
+	inputTensors := make([]tensor.Tensor, 0, len(names))
 
 	for _, tensorName := range names {
 		// An empty name can happen in between optional inputs, like:

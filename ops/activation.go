@@ -28,29 +28,37 @@ func Tanh(X tensor.Tensor) (tensor.Tensor, error) {
 	return tensor.Tanh(X)
 }
 
-// Sigmoid performs the sigmoid operation on a tensor.
+// Sigmoid performs the sigmoid operation on a tensor: 1 / (1 + exp(-x)).
+// Uses in-place operations to minimize intermediate allocations.
 func Sigmoid(X tensor.Tensor) (tensor.Tensor, error) {
-	negX, err := tensor.Neg(X)
+	// Clone X into a working buffer so we don't modify the input.
+	buf, ok := X.Clone().(tensor.Tensor)
+	if !ok {
+		return nil, ErrTypeAssert("tensor.Tensor", X.Clone())
+	}
+
+	// buf = -X (in-place)
+	if _, err := tensor.Neg(buf, tensor.UseUnsafe()); err != nil {
+		return nil, err
+	}
+
+	// buf = exp(-X) (in-place)
+	if _, err := tensor.Exp(buf, tensor.UseUnsafe()); err != nil {
+		return nil, err
+	}
+
+	typedOne, err := GetValueAsTensorType(1.0, buf.Dtype())
 	if err != nil {
 		return nil, err
 	}
 
-	expX, err := tensor.Exp(negX)
-	if err != nil {
+	// buf = 1 + exp(-X) (reuse buf)
+	if _, err := tensor.Add(typedOne, buf, tensor.WithReuse(buf)); err != nil {
 		return nil, err
 	}
 
-	typedOne, err := GetValueAsTensorType(1.0, expX.Dtype())
-	if err != nil {
-		return nil, err
-	}
-
-	numeratorX, err := tensor.Add(typedOne, expX)
-	if err != nil {
-		return nil, err
-	}
-
-	return tensor.Div(typedOne, numeratorX)
+	// result = 1 / (1 + exp(-X))
+	return tensor.Div(typedOne, buf)
 }
 
 // ReLU performs the ReLU operation on a tensor.

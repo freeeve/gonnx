@@ -97,30 +97,32 @@ func AnyToInt(value interface{}) (int, error) {
 // AnyToIntSlice casts the data of a node to an int list. This will only
 // be done if the data is of some sort of int type.
 func AnyToIntSlice(value interface{}) ([]int, error) {
-	var res []int
-
 	switch data := value.(type) {
 	case []int8:
-		for _, value := range data {
-			res = append(res, int(value))
+		res := make([]int, len(data))
+		for i, v := range data {
+			res[i] = int(v)
 		}
 
 		return res, nil
 	case []int16:
-		for _, value := range data {
-			res = append(res, int(value))
+		res := make([]int, len(data))
+		for i, v := range data {
+			res[i] = int(v)
 		}
 
 		return res, nil
 	case []int32:
-		for _, value := range data {
-			res = append(res, int(value))
+		res := make([]int, len(data))
+		for i, v := range data {
+			res[i] = int(v)
 		}
 
 		return res, nil
 	case []int64:
-		for _, value := range data {
-			res = append(res, int(value))
+		res := make([]int, len(data))
+		for i, v := range data {
+			res[i] = int(v)
 		}
 
 		return res, nil

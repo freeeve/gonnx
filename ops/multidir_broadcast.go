@@ -101,12 +101,14 @@ func AddExtraDimsToTensor(originalT tensor.Tensor, nExtraDims int) (tensor.Tenso
 		return nil, ErrTypeAssert("tensor.Tensor", originalT.Clone())
 	}
 
-	newShape := []int{}
+	origShape := t.Shape()
+	newShape := make([]int, nExtraDims+len(origShape))
+
 	for i := 0; i < nExtraDims; i++ {
-		newShape = append(newShape, 1)
+		newShape[i] = 1
 	}
 
-	newShape = append(newShape, t.Shape()...)
+	copy(newShape[nExtraDims:], origShape)
 
 	if err := t.Reshape(newShape...); err != nil {
 		return nil, err
