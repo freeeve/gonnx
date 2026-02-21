@@ -3,7 +3,6 @@ package lstm
 import (
 	"github.com/advancedclimatesystems/gonnx/onnx"
 	"github.com/advancedclimatesystems/gonnx/ops"
-	"github.com/advancedclimatesystems/gonnx/ops/gemm"
 	"gorgonia.org/tensor"
 )
 
@@ -168,37 +167,127 @@ func (l *LSTM) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 		return nil, err
 	}
 
+	// Pre-transpose all weight matrices once (all gates use transB=1).
+	Wit, err := tensor.Transpose(Wi)
+	if err != nil {
+		return nil, err
+	}
+
+	Wot, err := tensor.Transpose(Wo)
+	if err != nil {
+		return nil, err
+	}
+
+	Wft, err := tensor.Transpose(Wf)
+	if err != nil {
+		return nil, err
+	}
+
+	Wct, err := tensor.Transpose(Wc)
+	if err != nil {
+		return nil, err
+	}
+
+	Rit, err := tensor.Transpose(Ri)
+	if err != nil {
+		return nil, err
+	}
+
+	Rot, err := tensor.Transpose(Ro)
+	if err != nil {
+		return nil, err
+	}
+
+	Rft, err := tensor.Transpose(Rf)
+	if err != nil {
+		return nil, err
+	}
+
+	Rct, err := tensor.Transpose(Rc)
+	if err != nil {
+		return nil, err
+	}
+
+	// Combine W+R biases for all 4 gates (done once before loop).
+	biasI, err := tensor.Add(Wbi, Rbi)
+	if err != nil {
+		return nil, err
+	}
+
+	biasO, err := tensor.Add(Wbo, Rbo)
+	if err != nil {
+		return nil, err
+	}
+
+	biasF, err := tensor.Add(Wbf, Rbf)
+	if err != nil {
+		return nil, err
+	}
+
+	biasC, err := tensor.Add(Wbc, Rbc)
+	if err != nil {
+		return nil, err
+	}
+
+	// Expand all biases from (hidden) to (batch, hidden) to match MatMul output shapes.
+	// Done once before the loop to avoid per-timestep broadcast allocations.
+	biasI, err = expandBias(biasI, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	biasO, err = expandBias(biasO, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	biasF, err = expandBias(biasF, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	biasC, err = expandBias(biasC, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	inputSize := X.Shape()[2]
 	outputs := []tensor.Tensor{}
 
 	// Loop over all timesteps of the input, applying the LSTM calculation to every
 	// timesteps while updating the hidden tensor.
-	for t := 0; t < seqLength; t++ {
+	for t := range seqLength {
 		Xt, err := X.Slice(ops.NewSlicer(t, t+1), nil, nil)
 		if err != nil {
 			return nil, err
 		}
 
-		it, err := l.gateCalculation(Xt, Wi, Wbi, Ht, Ri, Rbi, Pi, Ct, fActivation)
+		// Reshape from (1, batch, input) to (batch, input) so MatMul produces 2D results.
+		if err = Xt.Reshape(batchSize, inputSize); err != nil {
+			return nil, err
+		}
+
+		it, err := l.gateCalcDirect(Xt, Ht, Wit, Rit, biasI, Pi, Ct, fActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		ft, err := l.gateCalculation(Xt, Wf, Wbf, Ht, Rf, Rbf, Pf, Ct, fActivation)
+		ft, err := l.gateCalcDirect(Xt, Ht, Wft, Rft, biasF, Pf, Ct, fActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		ct, err := l.gateCalculation(Xt, Wc, Wbc, Ht, Rc, Rbc, nil, nil, gActivation)
+		ct, err := l.gateCalcDirect(Xt, Ht, Wct, Rct, biasC, nil, nil, gActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		Ct, err = l.cellCalculation(ft, it, ct, Ct)
+		Ct, err = l.cellCalcDirect(ft, it, ct, Ct)
 		if err != nil {
 			return nil, err
 		}
 
-		ot, err := l.gateCalculation(Xt, Wo, Wbo, Ht, Ro, Rbo, Po, Ct, fActivation)
+		ot, err := l.gateCalcDirect(Xt, Ht, Wot, Rot, biasO, Po, Ct, fActivation)
 		if err != nil {
 			return nil, err
 		}
@@ -256,55 +345,27 @@ func (l *LSTM) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	return result, nil
 }
 
-// gateCalculation performs a standard gate calculation for an LSTM gate defined as:
-//
-//	o = f(Xt*(W^T) + Wb + H*(R^T) + Rb + P (.) C)
-//
-// Where:
-//   - 'f()' is an activation function
-//   - 'Xt' is the input tensor
-//   - 'W' is the input weight
-//   - 'Wb' is the input bias
-//   - 'H' is the hidden tensor
-//   - 'R' is the hidden weight tensor
-//   - 'Rb' is the hidden bias
-//   - 'P' are peephole weights (optional, can be nil)
-//   - 'C' is the cell state
-//   - '(.)' is element-wise multiplication
-//
-// 'o' is the result tensor that is returned.
-// This calculation can be used for the forget gate, input gate, cell gate
-// and output gate calculations.
-func (l *LSTM) gateCalculation(
-	Xt, W, Wb, H, R, Rb, P, C tensor.Tensor, activation ops.Activation,
+// gateCalcDirect computes an LSTM gate using pre-transposed weights and combined bias.
+// gate = activation(Xt @ Wt + H @ Rt + combinedBias + P (.) C)
+func (l *LSTM) gateCalcDirect(
+	Xt, H, Wt, Rt, combinedBias, P, C tensor.Tensor, activation ops.Activation,
 ) (tensor.Tensor, error) {
-	gemm := gemm.GetVersions()[13]()
-
-	err := gemm.Init(
-		&onnx.NodeProto{
-			Attribute: []*onnx.AttributeProto{
-				{Name: "alpha", F: 1.0},
-				{Name: "beta", F: 1.0},
-				{Name: "transA", I: 0},
-				{Name: "transB", I: 1},
-			},
-		},
-	)
+	inputCalc, err := tensor.MatMul(Xt, Wt)
 	if err != nil {
 		return nil, err
 	}
 
-	inputCalc, err := gemm.Apply([]tensor.Tensor{Xt, W, Wb})
+	hiddenCalc, err := tensor.MatMul(H, Rt)
 	if err != nil {
 		return nil, err
 	}
 
-	hiddenCalc, err := gemm.Apply([]tensor.Tensor{H, R, Rb})
+	sum, err := tensor.Add(inputCalc, hiddenCalc)
 	if err != nil {
 		return nil, err
 	}
 
-	output, err := tensor.Add(inputCalc[0], hiddenCalc[0])
+	result, err := tensor.Add(sum, combinedBias)
 	if err != nil {
 		return nil, err
 	}
@@ -320,44 +381,38 @@ func (l *LSTM) gateCalculation(
 			return nil, err
 		}
 
-		output, err = tensor.Add(output, peepholeActivation)
+		result, err = tensor.Add(result, peepholeActivation)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return activation(output)
+	return activation(result)
 }
 
-// cellCalculation performs the calculation of the LSTM cell update defined by:
-//
-//	Ct = ft (.) Ct-1 + it (.) ct
-//
-// Where 'ft' is the forget gate activation at time t, (.) denotes element-wise
-// multiplication, 'Ct-1' denotes the cell state at time t-1, 'it' denotes the input
-// gate activation at time t and 'ct' denotes the cell state activation at time t (which)
-// is not the same as Ct or Ct-1).
-func (l *LSTM) cellCalculation(ft, it, ct, Ct tensor.Tensor) (tensor.Tensor, error) {
-	cellForget, err := tensor.Mul(ft, Ct)
-	if err != nil {
-		return nil, err
+// cellCalcDirect computes Ct = ft * Ct-1 + it * ct using direct backing array access.
+func (l *LSTM) cellCalcDirect(ft, it, ct, Ct tensor.Tensor) (tensor.Tensor, error) {
+	out := tensor.New(tensor.WithShape(ft.Shape()...), tensor.Of(ft.Dtype()))
+
+	switch ft.Dtype() {
+	case tensor.Float32:
+		lstmCellTyped(out.Data().([]float32), ft.Data().([]float32), it.Data().([]float32), ct.Data().([]float32), Ct.Data().([]float32))
+	case tensor.Float64:
+		lstmCellTyped(out.Data().([]float64), ft.Data().([]float64), it.Data().([]float64), ct.Data().([]float64), Ct.Data().([]float64))
 	}
 
-	cellInput, err := tensor.Mul(it, ct)
-	if err != nil {
-		return nil, err
-	}
+	return out, nil
+}
 
-	return tensor.Add(cellForget, cellInput)
+func lstmCellTyped[T ops.FloatType](out, ft, it, ct, prevCt []T) {
+	for i := range out {
+		out[i] = ft[i]*prevCt[i] + it[i]*ct[i]
+	}
 }
 
 // hiddenCalculation performs the calculation of the new LSTM hidden state defined by:
 //
 //	Ht = ot (.) h(Ct)
-//
-// Where Ht is the new hidden state at time t, 'ot' is the output at time t, (.) denotes
-// element-wise multiplication, 'h()' denotes an activation function and 'Ct' denotes the
-// cell state at time t.
 func (l *LSTM) hiddenCalculation(ot, Ct tensor.Tensor, activation ops.Activation) (tensor.Tensor, error) {
 	cellActivated, err := activation(Ct)
 	if err != nil {
@@ -365,6 +420,20 @@ func (l *LSTM) hiddenCalculation(ot, Ct tensor.Tensor, activation ops.Activation
 	}
 
 	return tensor.Mul(ot, cellActivated)
+}
+
+// expandBias reshapes a 1D bias (hidden) to (1, hidden) and repeats to (batchSize, hidden).
+func expandBias(bias tensor.Tensor, batchSize int) (tensor.Tensor, error) {
+	hidden := bias.Shape()[0]
+	if err := bias.Reshape(1, hidden); err != nil {
+		return nil, err
+	}
+
+	if batchSize > 1 {
+		return tensor.Repeat(bias, 0, batchSize)
+	}
+
+	return bias, nil
 }
 
 // getWeights splits tensor W into 4 weight matrices.

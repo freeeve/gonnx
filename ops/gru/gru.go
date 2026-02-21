@@ -3,7 +3,6 @@ package gru
 import (
 	"github.com/advancedclimatesystems/gonnx/onnx"
 	"github.com/advancedclimatesystems/gonnx/ops"
-	"github.com/advancedclimatesystems/gonnx/ops/gemm"
 	"gorgonia.org/tensor"
 )
 
@@ -143,30 +142,100 @@ func (g *GRU) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 		return nil, err
 	}
 
+	// Pre-transpose weight matrices once (all gates use transB=1).
+	Wzt, err := tensor.Transpose(Wz)
+	if err != nil {
+		return nil, err
+	}
+
+	Wrt, err := tensor.Transpose(Wr)
+	if err != nil {
+		return nil, err
+	}
+
+	Wht, err := tensor.Transpose(Wh)
+	if err != nil {
+		return nil, err
+	}
+
+	Rzt, err := tensor.Transpose(Rz)
+	if err != nil {
+		return nil, err
+	}
+
+	Rrt, err := tensor.Transpose(Rr)
+	if err != nil {
+		return nil, err
+	}
+
+	Rht, err := tensor.Transpose(Rh)
+	if err != nil {
+		return nil, err
+	}
+
+	// Combine W+R biases for z and r gates (done once before loop).
+	biasZ, err := tensor.Add(Wbz, Rbz)
+	if err != nil {
+		return nil, err
+	}
+
+	biasR, err := tensor.Add(Wbr, Rbr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Expand all biases from (hidden) to (batch, hidden) to match MatMul output shapes.
+	// Done once before the loop to avoid per-timestep broadcast allocations.
+	biasZ, err = expandBias(biasZ, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	biasR, err = expandBias(biasR, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	Wbh, err = expandBias(Wbh, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	Rbh, err = expandBias(Rbh, batchSize)
+	if err != nil {
+		return nil, err
+	}
+
+	inputSize := X.Shape()[2]
 	outputs := []tensor.Tensor{}
 
-	for i := 0; i < seqLength; i++ {
+	for i := range seqLength {
 		Xt, err := g.extractXt(X, i)
 		if err != nil {
 			return nil, err
 		}
 
-		zt, err := g.gateCalculation(Xt, prevH, Wz, Rz, Wbz, Rbz, fActivation)
+		// Reshape from (1, batch, input) to (batch, input) so MatMul produces 2D results.
+		if err = Xt.Reshape(batchSize, inputSize); err != nil {
+			return nil, err
+		}
+
+		zt, err := g.gateCalcDirect(Xt, prevH, Wzt, Rzt, biasZ, fActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		rt, err := g.gateCalculation(Xt, prevH, Wr, Rr, Wbr, Rbr, fActivation)
+		rt, err := g.gateCalcDirect(Xt, prevH, Wrt, Rrt, biasR, fActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		ht, err := g.htCalculation(Xt, prevH, rt, Wh, Rh, Wbh, Rbh, gActivation)
+		ht, err := g.htCalcDirect(Xt, prevH, rt, Wht, Rht, Wbh, Rbh, gActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		prevH, err = g.hiddenCalculation(zt, ht, prevH)
+		prevH, err = g.hiddenCalcDirect(zt, ht, prevH)
 		if err != nil {
 			return nil, err
 		}
@@ -209,111 +278,141 @@ func (g *GRU) extractXt(X tensor.Tensor, t int) (tensor.Tensor, error) {
 	return X.Slice(ops.NewSlicer(t, t+1), nil, nil)
 }
 
-func (g *GRU) gateCalculation(
-	Xt, H, W, R, Wb, Rb tensor.Tensor, activation ops.Activation,
+// gateCalcDirect computes a gate using pre-transposed weights and combined bias.
+// gate = activation(Xt @ Wt + H @ Rt + combinedBias)
+func (g *GRU) gateCalcDirect(
+	Xt, H, Wt, Rt, combinedBias tensor.Tensor, activation ops.Activation,
 ) (tensor.Tensor, error) {
-	gemm := gemm.GetVersions()[13]()
-
-	err := gemm.Init(
-		&onnx.NodeProto{
-			Attribute: []*onnx.AttributeProto{
-				{Name: "alpha", F: 1.0},
-				{Name: "beta", F: 1.0},
-				{Name: "transA", I: 0},
-				{Name: "transB", I: 1},
-			},
-		},
-	)
+	inputCalc, err := tensor.MatMul(Xt, Wt)
 	if err != nil {
 		return nil, err
 	}
 
-	inputCalc, err := gemm.Apply([]tensor.Tensor{Xt, W, Wb})
+	hiddenCalc, err := tensor.MatMul(H, Rt)
 	if err != nil {
 		return nil, err
 	}
 
-	hiddenCalc, err := gemm.Apply([]tensor.Tensor{H, R, Rb})
+	sum, err := tensor.Add(inputCalc, hiddenCalc)
 	if err != nil {
 		return nil, err
 	}
 
-	gate, err := tensor.Add(inputCalc[0], hiddenCalc[0])
+	result, err := tensor.Add(sum, combinedBias)
 	if err != nil {
 		return nil, err
 	}
 
-	return activation(gate)
+	return activation(result)
 }
 
-func (g *GRU) htCalculation(
-	Xt, prevH, rt, W, R, Wb, Rb tensor.Tensor, activation ops.Activation,
+// htCalcDirect computes the ht gate using pre-transposed weights.
+// For linearBeforeReset=false: ht = g(Xt @ Wh^T + Wbh + (rt * prevH) @ Rh^T + Rbh)
+// For linearBeforeReset=true:  ht = g(Xt @ Wh^T + Wbh + rt * (prevH @ Rh^T + Rbh))
+func (g *GRU) htCalcDirect(
+	Xt, prevH, rt, Wht, Rht, Wbh, Rbh tensor.Tensor, activation ops.Activation,
 ) (tensor.Tensor, error) {
 	if !g.linearBeforeReset {
-		temp1, err := tensor.Mul(rt, prevH)
+		maskedH, err := tensor.Mul(rt, prevH)
 		if err != nil {
 			return nil, err
 		}
 
-		return g.gateCalculation(Xt, temp1, W, R, Wb, Rb, activation)
+		inputCalc, err := tensor.MatMul(Xt, Wht)
+		if err != nil {
+			return nil, err
+		}
+
+		hiddenCalc, err := tensor.MatMul(maskedH, Rht)
+		if err != nil {
+			return nil, err
+		}
+
+		sum, err := tensor.Add(inputCalc, hiddenCalc)
+		if err != nil {
+			return nil, err
+		}
+
+		sum, err = tensor.Add(sum, Wbh)
+		if err != nil {
+			return nil, err
+		}
+
+		result, err := tensor.Add(sum, Rbh)
+		if err != nil {
+			return nil, err
+		}
+
+		return activation(result)
 	}
 
-	gemm := gemm.GetVersions()[13]()
-
-	err := gemm.Init(
-		&onnx.NodeProto{
-			Attribute: []*onnx.AttributeProto{
-				{Name: "alpha", F: 1.0},
-				{Name: "beta", F: 1.0},
-				{Name: "transA", I: 0},
-				{Name: "transB", I: 1},
-			},
-		},
-	)
+	// linearBeforeReset=true path:
+	// ht = g(Xt @ Wh^T + Wbh + rt * (prevH @ Rh^T + Rbh))
+	inputCalc, err := tensor.MatMul(Xt, Wht)
 	if err != nil {
 		return nil, err
 	}
 
-	inputCalc, err := gemm.Apply([]tensor.Tensor{Xt, W, Wb})
+	inputWithBias, err := tensor.Add(inputCalc, Wbh)
 	if err != nil {
 		return nil, err
 	}
 
-	hiddenCalc, err := gemm.Apply([]tensor.Tensor{prevH, R, Rb})
+	hiddenCalc, err := tensor.MatMul(prevH, Rht)
 	if err != nil {
 		return nil, err
 	}
 
-	temp1, err := tensor.Mul(hiddenCalc[0], rt)
+	hiddenWithBias, err := tensor.Add(hiddenCalc, Rbh)
 	if err != nil {
 		return nil, err
 	}
 
-	temp2, err := tensor.Add(temp1, inputCalc[0])
+	masked, err := tensor.Mul(hiddenWithBias, rt)
 	if err != nil {
 		return nil, err
 	}
 
-	return activation(temp2)
+	result, err := tensor.Add(inputWithBias, masked)
+	if err != nil {
+		return nil, err
+	}
+
+	return activation(result)
 }
 
-func (g *GRU) hiddenCalculation(zt, ht, prevH tensor.Tensor) (tensor.Tensor, error) {
-	temp1, err := tensor.Sub(ops.OnesTensor(zt), zt)
-	if err != nil {
+// hiddenCalcDirect computes Ht = (1 - zt) * ht + zt * prevH using direct backing array access.
+func (g *GRU) hiddenCalcDirect(zt, ht, prevH tensor.Tensor) (tensor.Tensor, error) {
+	out := tensor.New(tensor.WithShape(zt.Shape()...), tensor.Of(zt.Dtype()))
+
+	switch zt.Dtype() {
+	case tensor.Float32:
+		gruHiddenTyped(out.Data().([]float32), zt.Data().([]float32), ht.Data().([]float32), prevH.Data().([]float32))
+	case tensor.Float64:
+		gruHiddenTyped(out.Data().([]float64), zt.Data().([]float64), ht.Data().([]float64), prevH.Data().([]float64))
+	}
+
+	return out, nil
+}
+
+func gruHiddenTyped[T ops.FloatType](out, zt, ht, prevH []T) {
+	for i := range out {
+		out[i] = (1-zt[i])*ht[i] + zt[i]*prevH[i]
+	}
+}
+
+// expandBias reshapes a 1D bias (hidden) to (1, hidden) and repeats to (batchSize, hidden).
+func expandBias(bias tensor.Tensor, batchSize int) (tensor.Tensor, error) {
+	hidden := bias.Shape()[0]
+	if err := bias.Reshape(1, hidden); err != nil {
 		return nil, err
 	}
 
-	temp2, err := tensor.Mul(temp1, ht)
-	if err != nil {
-		return nil, err
+	if batchSize > 1 {
+		return tensor.Repeat(bias, 0, batchSize)
 	}
 
-	temp3, err := tensor.Mul(zt, prevH)
-	if err != nil {
-		return nil, err
-	}
-
-	return tensor.Add(temp2, temp3)
+	return bias, nil
 }
 
 // getWeights splits tensor W into 3 weight matrices.

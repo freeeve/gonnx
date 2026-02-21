@@ -91,9 +91,11 @@ func (g *Gemm) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 		return nil, err
 	}
 
-	x, err = tensor.Mul(x, g.alpha)
-	if err != nil {
-		return nil, err
+	if g.alpha != 1.0 {
+		x, err = tensor.Mul(x, g.alpha)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// If C was not given, it is assumed to be 0, hence we can stop the calculation here.
@@ -101,9 +103,14 @@ func (g *Gemm) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 		return []tensor.Tensor{x}, nil
 	}
 
-	y, err := tensor.Mul(c, g.beta)
-	if err != nil {
-		return nil, err
+	var y tensor.Tensor
+	if g.beta != 1.0 {
+		y, err = tensor.Mul(c, g.beta)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		y = c
 	}
 
 	x, y, err = ops.UnidirectionalBroadcast(x, y)
