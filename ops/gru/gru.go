@@ -209,6 +209,11 @@ func (g *GRU) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	inputSize := X.Shape()[2]
 	outputs := []tensor.Tensor{}
 
+	// Pre-allocate scratch buffers for reuse across timesteps.
+	s1 := tensor.New(tensor.WithShape(batchSize, g.hiddenSize), tensor.Of(X.Dtype()))
+	s2 := tensor.New(tensor.WithShape(batchSize, g.hiddenSize), tensor.Of(X.Dtype()))
+	s3 := tensor.New(tensor.WithShape(batchSize, g.hiddenSize), tensor.Of(X.Dtype()))
+
 	for i := range seqLength {
 		Xt, err := g.extractXt(X, i)
 		if err != nil {
@@ -220,17 +225,17 @@ func (g *GRU) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 			return nil, err
 		}
 
-		zt, err := g.gateCalcDirect(Xt, prevH, Wzt, Rzt, biasZ, fActivation)
+		zt, err := g.gateCalcDirect(Xt, prevH, Wzt, Rzt, biasZ, s1, s2, fActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		rt, err := g.gateCalcDirect(Xt, prevH, Wrt, Rrt, biasR, fActivation)
+		rt, err := g.gateCalcDirect(Xt, prevH, Wrt, Rrt, biasR, s1, s2, fActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		ht, err := g.htCalcDirect(Xt, prevH, rt, Wht, Rht, Wbh, Rbh, gActivation)
+		ht, err := g.htCalcDirect(Xt, prevH, rt, Wht, Rht, Wbh, Rbh, s1, s2, s3, gActivation)
 		if err != nil {
 			return nil, err
 		}
@@ -280,105 +285,107 @@ func (g *GRU) extractXt(X tensor.Tensor, t int) (tensor.Tensor, error) {
 
 // gateCalcDirect computes a gate using pre-transposed weights and combined bias.
 // gate = activation(Xt @ Wt + H @ Rt + combinedBias)
+// s1 and s2 are pre-allocated scratch buffers to avoid per-timestep allocations.
 func (g *GRU) gateCalcDirect(
-	Xt, H, Wt, Rt, combinedBias tensor.Tensor, activation ops.Activation,
+	Xt, H, Wt, Rt, combinedBias, s1, s2 tensor.Tensor, activation ops.Activation,
 ) (tensor.Tensor, error) {
-	inputCalc, err := tensor.MatMul(Xt, Wt)
+	_, err := tensor.MatMul(Xt, Wt, tensor.WithReuse(s1))
 	if err != nil {
 		return nil, err
 	}
 
-	hiddenCalc, err := tensor.MatMul(H, Rt)
+	_, err = tensor.MatMul(H, Rt, tensor.WithReuse(s2))
 	if err != nil {
 		return nil, err
 	}
 
-	sum, err := tensor.Add(inputCalc, hiddenCalc)
+	_, err = tensor.Add(s1, s2, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := tensor.Add(sum, combinedBias)
+	_, err = tensor.Add(s1, combinedBias, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
 
-	return activation(result)
+	return activation(s1)
 }
 
 // htCalcDirect computes the ht gate using pre-transposed weights.
 // For linearBeforeReset=false: ht = g(Xt @ Wh^T + Wbh + (rt * prevH) @ Rh^T + Rbh)
 // For linearBeforeReset=true:  ht = g(Xt @ Wh^T + Wbh + rt * (prevH @ Rh^T + Rbh))
+// s1, s2, s3 are pre-allocated scratch buffers to avoid per-timestep allocations.
 func (g *GRU) htCalcDirect(
-	Xt, prevH, rt, Wht, Rht, Wbh, Rbh tensor.Tensor, activation ops.Activation,
+	Xt, prevH, rt, Wht, Rht, Wbh, Rbh, s1, s2, s3 tensor.Tensor, activation ops.Activation,
 ) (tensor.Tensor, error) {
 	if !g.linearBeforeReset {
-		maskedH, err := tensor.Mul(rt, prevH)
+		_, err := tensor.Mul(rt, prevH, tensor.WithReuse(s3))
 		if err != nil {
 			return nil, err
 		}
 
-		inputCalc, err := tensor.MatMul(Xt, Wht)
+		_, err = tensor.MatMul(Xt, Wht, tensor.WithReuse(s1))
 		if err != nil {
 			return nil, err
 		}
 
-		hiddenCalc, err := tensor.MatMul(maskedH, Rht)
+		_, err = tensor.MatMul(s3, Rht, tensor.WithReuse(s2))
 		if err != nil {
 			return nil, err
 		}
 
-		sum, err := tensor.Add(inputCalc, hiddenCalc)
+		_, err = tensor.Add(s1, s2, tensor.UseUnsafe())
 		if err != nil {
 			return nil, err
 		}
 
-		sum, err = tensor.Add(sum, Wbh)
+		_, err = tensor.Add(s1, Wbh, tensor.UseUnsafe())
 		if err != nil {
 			return nil, err
 		}
 
-		result, err := tensor.Add(sum, Rbh)
+		_, err = tensor.Add(s1, Rbh, tensor.UseUnsafe())
 		if err != nil {
 			return nil, err
 		}
 
-		return activation(result)
+		return activation(s1)
 	}
 
 	// linearBeforeReset=true path:
 	// ht = g(Xt @ Wh^T + Wbh + rt * (prevH @ Rh^T + Rbh))
-	inputCalc, err := tensor.MatMul(Xt, Wht)
+	_, err := tensor.MatMul(Xt, Wht, tensor.WithReuse(s1))
 	if err != nil {
 		return nil, err
 	}
 
-	inputWithBias, err := tensor.Add(inputCalc, Wbh)
+	_, err = tensor.Add(s1, Wbh, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
 
-	hiddenCalc, err := tensor.MatMul(prevH, Rht)
+	_, err = tensor.MatMul(prevH, Rht, tensor.WithReuse(s2))
 	if err != nil {
 		return nil, err
 	}
 
-	hiddenWithBias, err := tensor.Add(hiddenCalc, Rbh)
+	_, err = tensor.Add(s2, Rbh, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
 
-	masked, err := tensor.Mul(hiddenWithBias, rt)
+	_, err = tensor.Mul(s2, rt, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := tensor.Add(inputWithBias, masked)
+	_, err = tensor.Add(s1, s2, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
 
-	return activation(result)
+	return activation(s1)
 }
 
 // hiddenCalcDirect computes Ht = (1 - zt) * ht + zt * prevH using direct backing array access.

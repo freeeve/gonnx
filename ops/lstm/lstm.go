@@ -254,6 +254,10 @@ func (l *LSTM) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	inputSize := X.Shape()[2]
 	outputs := []tensor.Tensor{}
 
+	// Pre-allocate scratch buffers for reuse across timesteps.
+	s1 := tensor.New(tensor.WithShape(batchSize, l.hiddenSize), tensor.Of(X.Dtype()))
+	s2 := tensor.New(tensor.WithShape(batchSize, l.hiddenSize), tensor.Of(X.Dtype()))
+
 	// Loop over all timesteps of the input, applying the LSTM calculation to every
 	// timesteps while updating the hidden tensor.
 	for t := range seqLength {
@@ -267,17 +271,17 @@ func (l *LSTM) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 			return nil, err
 		}
 
-		it, err := l.gateCalcDirect(Xt, Ht, Wit, Rit, biasI, Pi, Ct, fActivation)
+		it, err := l.gateCalcDirect(Xt, Ht, Wit, Rit, biasI, Pi, Ct, s1, s2, fActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		ft, err := l.gateCalcDirect(Xt, Ht, Wft, Rft, biasF, Pf, Ct, fActivation)
+		ft, err := l.gateCalcDirect(Xt, Ht, Wft, Rft, biasF, Pf, Ct, s1, s2, fActivation)
 		if err != nil {
 			return nil, err
 		}
 
-		ct, err := l.gateCalcDirect(Xt, Ht, Wct, Rct, biasC, nil, nil, gActivation)
+		ct, err := l.gateCalcDirect(Xt, Ht, Wct, Rct, biasC, nil, nil, s1, s2, gActivation)
 		if err != nil {
 			return nil, err
 		}
@@ -287,7 +291,7 @@ func (l *LSTM) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 			return nil, err
 		}
 
-		ot, err := l.gateCalcDirect(Xt, Ht, Wot, Rot, biasO, Po, Ct, fActivation)
+		ot, err := l.gateCalcDirect(Xt, Ht, Wot, Rot, biasO, Po, Ct, s1, s2, fActivation)
 		if err != nil {
 			return nil, err
 		}
@@ -347,25 +351,26 @@ func (l *LSTM) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 
 // gateCalcDirect computes an LSTM gate using pre-transposed weights and combined bias.
 // gate = activation(Xt @ Wt + H @ Rt + combinedBias + P (.) C)
+// s1 and s2 are pre-allocated scratch buffers to avoid per-timestep allocations.
 func (l *LSTM) gateCalcDirect(
-	Xt, H, Wt, Rt, combinedBias, P, C tensor.Tensor, activation ops.Activation,
+	Xt, H, Wt, Rt, combinedBias, P, C, s1, s2 tensor.Tensor, activation ops.Activation,
 ) (tensor.Tensor, error) {
-	inputCalc, err := tensor.MatMul(Xt, Wt)
+	_, err := tensor.MatMul(Xt, Wt, tensor.WithReuse(s1))
 	if err != nil {
 		return nil, err
 	}
 
-	hiddenCalc, err := tensor.MatMul(H, Rt)
+	_, err = tensor.MatMul(H, Rt, tensor.WithReuse(s2))
 	if err != nil {
 		return nil, err
 	}
 
-	sum, err := tensor.Add(inputCalc, hiddenCalc)
+	_, err = tensor.Add(s1, s2, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := tensor.Add(sum, combinedBias)
+	_, err = tensor.Add(s1, combinedBias, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
@@ -381,13 +386,13 @@ func (l *LSTM) gateCalcDirect(
 			return nil, err
 		}
 
-		result, err = tensor.Add(result, peepholeActivation)
+		_, err = tensor.Add(s1, peepholeActivation, tensor.UseUnsafe())
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return activation(result)
+	return activation(s1)
 }
 
 // cellCalcDirect computes Ct = ft * Ct-1 + it * ct using direct backing array access.

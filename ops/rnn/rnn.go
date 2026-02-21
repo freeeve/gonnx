@@ -152,6 +152,10 @@ func (r *RNN) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	inputSize := X.Shape()[2]
 	outputs := []tensor.Tensor{}
 
+	// Pre-allocate scratch buffers for reuse across timesteps.
+	s1 := tensor.New(tensor.WithShape(batchSize, r.hiddenSize), tensor.Of(X.Dtype()))
+	s2 := tensor.New(tensor.WithShape(batchSize, r.hiddenSize), tensor.Of(X.Dtype()))
+
 	// Loop over all timesteps of the input, applying the RNN calculation to every
 	// timesteps while updating the hidden tensor.
 	for t := range seqLength {
@@ -165,7 +169,7 @@ func (r *RNN) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 			return nil, err
 		}
 
-		Ht, err = r.layerCalcDirect(Xt, Ht, Wit, Rit, bias, activation)
+		Ht, err = r.layerCalcDirect(Xt, Ht, Wit, Rit, bias, s1, s2, activation)
 		if err != nil {
 			return nil, err
 		}
@@ -202,30 +206,31 @@ func (r *RNN) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 
 // layerCalcDirect computes the RNN layer using pre-transposed weights and combined bias.
 // Ht = activation(Xt @ Wi^T + Ht-1 @ Ri^T + bias)
+// s1 and s2 are pre-allocated scratch buffers to avoid per-timestep allocations.
 func (r *RNN) layerCalcDirect(
-	Xt, H, Wit, Rit, bias tensor.Tensor, activation ops.Activation,
+	Xt, H, Wit, Rit, bias, s1, s2 tensor.Tensor, activation ops.Activation,
 ) (tensor.Tensor, error) {
-	inputCalc, err := tensor.MatMul(Xt, Wit)
+	_, err := tensor.MatMul(Xt, Wit, tensor.WithReuse(s1))
 	if err != nil {
 		return nil, err
 	}
 
-	hiddenCalc, err := tensor.MatMul(H, Rit)
+	_, err = tensor.MatMul(H, Rit, tensor.WithReuse(s2))
 	if err != nil {
 		return nil, err
 	}
 
-	sum, err := tensor.Add(inputCalc, hiddenCalc)
+	_, err = tensor.Add(s1, s2, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := tensor.Add(sum, bias)
+	_, err = tensor.Add(s1, bias, tensor.UseUnsafe())
 	if err != nil {
 		return nil, err
 	}
 
-	return activation(result)
+	return activation(s1)
 }
 
 // expandBias reshapes a 1D bias (hidden) to (1, hidden) and repeats to (batchSize, hidden).
