@@ -19,14 +19,18 @@ func ApplyBinaryOperation(A, B tensor.Tensor, op BinaryOp, broadcastOption Broad
 	case NoBroadcasting:
 		break
 	case UnidirectionalBroadcasting:
-		A, B, err = UnidirectionalBroadcast(A, B)
-		if err != nil {
-			return nil, err
+		if !slices.Equal(A.Shape(), B.Shape()) {
+			A, B, err = UnidirectionalBroadcast(A, B)
+			if err != nil {
+				return nil, err
+			}
 		}
 	case MultidirectionalBroadcasting:
-		A, B, err = MultidirectionalBroadcast(A, B)
-		if err != nil {
-			return nil, err
+		if !slices.Equal(A.Shape(), B.Shape()) {
+			A, B, err = MultidirectionalBroadcast(A, B)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -158,9 +162,13 @@ type BooleanOp func(a, b bool) bool
 // Using this iterator, the given boolean operator is applied to all pairs of elements from
 // A and B and the result is returned.
 func applyBooleanBinaryOperator(A, B tensor.Tensor, op BooleanOp) (tensor.Tensor, error) {
-	A, B, err := MultidirectionalBroadcast(A, B)
-	if err != nil {
-		return nil, err
+	if !slices.Equal(A.Shape(), B.Shape()) {
+		var err error
+
+		A, B, err = MultidirectionalBroadcast(A, B)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	output := tensor.NewDense(tensor.Bool, A.Shape())
