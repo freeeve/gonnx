@@ -408,7 +408,6 @@ func gruHiddenTyped[T ops.FloatType](out, zt, ht, prevH []T) {
 	}
 }
 
-// expandBias reshapes a 1D bias (hidden) to (1, hidden) and repeats to (batchSize, hidden).
 // getWeights splits tensor W into 3 weight matrices.
 // The W tensor, by GONNX definition, has 3 dimensions with 3 weight
 // tensors in it (6 if bidirectional, but that is not supported).

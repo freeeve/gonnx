@@ -233,7 +233,6 @@ func (r *RNN) layerCalcDirect(
 	return activation(s1)
 }
 
-// expandBias reshapes a 1D bias (hidden) to (1, hidden) and repeats to (batchSize, hidden).
 // getWeights returns the weights from a concatenated weight tensor. The result is
 // a single weight matrix. W has shape (num_directions, hidden_size, ...).
 // The W tensor, by GONNX definition, has 3 dimensions with 1 weight

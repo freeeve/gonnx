@@ -427,7 +427,6 @@ func (l *LSTM) hiddenCalculation(ot, Ct tensor.Tensor, activation ops.Activation
 	return tensor.Mul(ot, cellActivated)
 }
 
-// expandBias reshapes a 1D bias (hidden) to (1, hidden) and repeats to (batchSize, hidden).
 // getWeights splits tensor W into 4 weight matrices.
 // The W tensor, by GONNX definition, has 3 dimensions with 4 weight
 // tensors in it (8 if bidirectional, but that is not supported).
