@@ -68,14 +68,9 @@ func (u *Unsqueeze) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 
 	newShape := insertOnes(dataShape, axes)
 
-	out, ok := inputs[0].Clone().(tensor.Tensor)
-	if !ok {
-		return nil, ops.ErrTypeAssert("tensor.Tensor", inputs[0].Clone())
-	}
+	out := tensor.New(tensor.WithBacking(ops.IfScalarToSlice(inputs[0].Data())), tensor.WithShape(newShape...))
 
-	err = out.Reshape(newShape...)
-
-	return []tensor.Tensor{out}, err
+	return []tensor.Tensor{out}, nil
 }
 
 // Creates a new array, which is `original` with ones added at the indices specified by `indices`

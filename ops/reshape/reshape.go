@@ -50,14 +50,9 @@ func (r *Reshape) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 		return nil, err
 	}
 
-	out, ok := t.Clone().(tensor.Tensor)
-	if !ok {
-		return nil, ops.ErrTypeAssert("tensor.Tensor", t.Clone())
-	}
+	out := tensor.New(tensor.WithBacking(ops.IfScalarToSlice(t.Data())), tensor.WithShape(newShape...))
 
-	err = out.Reshape(newShape...)
-
-	return []tensor.Tensor{out}, err
+	return []tensor.Tensor{out}, nil
 }
 
 func processShape(newShape, currentShape []int) error {
