@@ -1,6 +1,9 @@
 package ops
 
 import (
+	"math"
+
+	"github.com/chewxy/math32"
 	"gorgonia.org/tensor"
 )
 
@@ -23,67 +26,82 @@ func GetActivation(activation string) (Activation, error) {
 	return nil, ErrActivationNotImplemented(activation)
 }
 
-// Tanh performs the tanh operation on a tensor.
+// Tanh performs the tanh operation on a tensor using direct backing array manipulation.
 func Tanh(X tensor.Tensor) (tensor.Tensor, error) {
-	return tensor.Tanh(X)
+	switch X.Dtype() {
+	case tensor.Float32:
+		data := X.Data().([]float32)
+		out := make([]float32, len(data))
+		for i, v := range data {
+			out[i] = math32.Tanh(v)
+		}
+		return tensor.New(tensor.WithBacking(out), tensor.WithShape(X.Shape()...)), nil
+	case tensor.Float64:
+		data := X.Data().([]float64)
+		out := make([]float64, len(data))
+		for i, v := range data {
+			out[i] = math.Tanh(v)
+		}
+		return tensor.New(tensor.WithBacking(out), tensor.WithShape(X.Shape()...)), nil
+	default:
+		return nil, ErrCast
+	}
 }
 
 // Sigmoid performs the sigmoid operation on a tensor: 1 / (1 + exp(-x)).
-// Uses in-place operations to minimize intermediate allocations.
+// Uses direct backing array manipulation to minimize allocations.
 func Sigmoid(X tensor.Tensor) (tensor.Tensor, error) {
-	// Clone X into a working buffer so we don't modify the input.
-	buf, ok := X.Clone().(tensor.Tensor)
-	if !ok {
-		return nil, ErrTypeAssert("tensor.Tensor", X.Clone())
+	switch X.Dtype() {
+	case tensor.Float32:
+		return sigmoidFloat32(X)
+	case tensor.Float64:
+		return sigmoidFloat64(X)
+	default:
+		return nil, ErrCast
 	}
+}
 
-	// buf = -X (in-place)
-	if _, err := tensor.Neg(buf, tensor.UseUnsafe()); err != nil {
-		return nil, err
+func sigmoidFloat32(X tensor.Tensor) (tensor.Tensor, error) {
+	data := X.Data().([]float32)
+	out := make([]float32, len(data))
+	for i, v := range data {
+		e := math32.Exp(-v)
+		out[i] = 1.0 / (1.0 + e)
 	}
+	return tensor.New(tensor.WithBacking(out), tensor.WithShape(X.Shape()...)), nil
+}
 
-	// buf = exp(-X) (in-place)
-	if _, err := tensor.Exp(buf, tensor.UseUnsafe()); err != nil {
-		return nil, err
+func sigmoidFloat64(X tensor.Tensor) (tensor.Tensor, error) {
+	data := X.Data().([]float64)
+	out := make([]float64, len(data))
+	for i, v := range data {
+		out[i] = 1.0 / (1.0 + math.Exp(-v))
 	}
-
-	typedOne, err := GetValueAsTensorType(1.0, buf.Dtype())
-	if err != nil {
-		return nil, err
-	}
-
-	// buf = 1 + exp(-X) (reuse buf)
-	if _, err := tensor.Add(typedOne, buf, tensor.WithReuse(buf)); err != nil {
-		return nil, err
-	}
-
-	// result = 1 / (1 + exp(-X))
-	return tensor.Div(typedOne, buf)
+	return tensor.New(tensor.WithBacking(out), tensor.WithShape(X.Shape()...)), nil
 }
 
 // ReLU performs the ReLU operation on a tensor using direct backing array manipulation.
 func ReLU(X tensor.Tensor) (tensor.Tensor, error) {
-	out, ok := X.Clone().(tensor.Tensor)
-	if !ok {
-		return nil, ErrTypeAssert("tensor.Tensor", X.Clone())
-	}
-
 	switch X.Dtype() {
 	case tensor.Float32:
-		reluTyped(out.Data().([]float32))
+		data := X.Data().([]float32)
+		out := make([]float32, len(data))
+		for i, v := range data {
+			if v > 0 {
+				out[i] = v
+			}
+		}
+		return tensor.New(tensor.WithBacking(out), tensor.WithShape(X.Shape()...)), nil
 	case tensor.Float64:
-		reluTyped(out.Data().([]float64))
+		data := X.Data().([]float64)
+		out := make([]float64, len(data))
+		for i, v := range data {
+			if v > 0 {
+				out[i] = v
+			}
+		}
+		return tensor.New(tensor.WithBacking(out), tensor.WithShape(X.Shape()...)), nil
 	default:
 		return nil, ErrCast
-	}
-
-	return out, nil
-}
-
-func reluTyped[T FloatType](d []T) {
-	for i, v := range d {
-		if v < 0 {
-			d[i] = 0
-		}
 	}
 }

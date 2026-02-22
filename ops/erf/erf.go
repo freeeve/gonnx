@@ -33,45 +33,42 @@ func (e *Erf) Init(*onnx.NodeProto) error {
 	return nil
 }
 
-// Apply applies the erf operator.
+// Apply applies the erf operator using direct backing array manipulation.
 func (e *Erf) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
-	var (
-		out tensor.Tensor
-		err error
-	)
+	input := inputs[0]
 
-	switch inputs[0].Dtype() {
+	switch input.Dtype() {
 	case tensor.Uint8:
-		out, err = inputs[0].Apply(erf[uint8])
+		return erfTyped[uint8](input)
 	case tensor.Uint16:
-		out, err = inputs[0].Apply(erf[uint16])
+		return erfTyped[uint16](input)
 	case tensor.Uint32:
-		out, err = inputs[0].Apply(erf[uint32])
+		return erfTyped[uint32](input)
 	case tensor.Uint64:
-		out, err = inputs[0].Apply(erf[uint64])
+		return erfTyped[uint64](input)
 	case tensor.Int8:
-		out, err = inputs[0].Apply(erf[int8])
+		return erfTyped[int8](input)
 	case tensor.Int16:
-		out, err = inputs[0].Apply(erf[int16])
+		return erfTyped[int16](input)
 	case tensor.Int32:
-		out, err = inputs[0].Apply(erf[int32])
+		return erfTyped[int32](input)
 	case tensor.Int64:
-		out, err = inputs[0].Apply(erf[int64])
+		return erfTyped[int64](input)
 	case tensor.Float32:
-		out, err = inputs[0].Apply(erf[float32])
+		return erfTyped[float32](input)
 	case tensor.Float64:
-		out, err = inputs[0].Apply(erf[float64])
+		return erfTyped[float64](input)
 	default:
-		return nil, ops.ErrInvalidInputType(0, inputs[0].Dtype().String(), e.BaseOperator)
+		return nil, ops.ErrInvalidInputType(0, input.Dtype().String(), e.BaseOperator)
 	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return []tensor.Tensor{out}, nil
 }
 
-func erf[T ops.NumericType](x T) T {
-	return T(math.Erf(float64(x)))
+func erfTyped[T ops.NumericType](input tensor.Tensor) ([]tensor.Tensor, error) {
+	data := input.Data().([]T)
+	out := make([]T, len(data))
+	for i, v := range data {
+		out[i] = T(math.Erf(float64(v)))
+	}
+	t := tensor.New(tensor.WithBacking(out), tensor.WithShape(input.Shape()...))
+	return []tensor.Tensor{t}, nil
 }

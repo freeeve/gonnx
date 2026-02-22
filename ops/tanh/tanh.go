@@ -28,12 +28,12 @@ func newTanh(version int, typeConstraint [][]tensor.Dtype) ops.Operator {
 	}
 }
 
-// Init initializes the sigmoid operator.
+// Init initializes the tanh operator.
 func (t *Tanh) Init(*onnx.NodeProto) error {
 	return nil
 }
 
-// Apply the sigmoid operator to the input node.
+// Apply applies the tanh operator to the input node.
 func (t *Tanh) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	out, err := ops.Tanh(inputs[0])
 
