@@ -47,3 +47,10 @@ func (s *Slicer) End() int {
 func (s *Slicer) Step() int {
 	return s.step
 }
+
+// SetStartEnd updates the start and end of the slicer in place, keeping step=1.
+func (s *Slicer) SetStartEnd(start, end int) {
+	s.start = start
+	s.end = end
+	s.step = 1
+}

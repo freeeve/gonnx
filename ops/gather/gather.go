@@ -53,45 +53,49 @@ func (g *Gather) Init(n *onnx.NodeProto) error {
 
 // Apply applies the gather operator.
 func (g *Gather) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
-	// Convert the indices (of Dtype Int32 or Int64) to a tensor with Dtype Int
 	indicesData, err := ops.AnyToIntSlice(ops.IfScalarToSlice(inputs[1].Data()))
 	if err != nil {
 		return nil, err
 	}
 
-	indices := tensor.New(tensor.WithBacking(indicesData), tensor.WithShape(inputs[1].Shape()...))
-
 	data := inputs[0]
 
-	// Make sure axis is in the correct range (according to the size of the data tensor)
 	rank := len(data.Shape())
 	dataAxis := g.axis
 
 	if dataAxis < -rank || dataAxis > rank-1 {
 		return nil, ops.ErrAxisOutOfRange(rank, rank, dataAxis)
 	}
-	// Offset axis if a negative index is given.
+
 	if dataAxis < 0 {
 		dataAxis += rank
 	}
 
-	// Make sure the input indices are all in the correct range (according to the size of the
-	// dimension which is selected by `axis`)
 	axisDimSize := data.Shape()[dataAxis]
 	if !ops.AllInRange(indicesData, -axisDimSize, axisDimSize-1) {
 		return nil, ops.ErrNotAllAxesInRange(axisDimSize, axisDimSize)
 	}
 
-	err = ops.OffsetTensorIfNegative(indices, axisDimSize)
-	if err != nil {
-		return nil, err
-	}
+	// Offset negative indices in place.
+	ops.OffsetArrayIfNegative(indicesData, axisDimSize)
 
-	// Make the shape of the output tensor
-	os := insertWithReplace(indices.Shape(), data.Shape(), dataAxis)
+	indicesShape := inputs[1].Shape()
+	os := insertWithReplace(indicesShape, data.Shape(), dataAxis)
 	output := tensor.New(tensor.WithShape(os...), tensor.Of(data.Dtype()))
 
-	// Perform the actual gather operation
+	// Fast path for axis=0: direct backing array copy.
+	// Skip for scalar outputs (empty shape) since Data() returns a scalar, not a slice.
+	if dataAxis == 0 && rank >= 1 && len(os) > 0 {
+		if err := gatherAxis0(output, data, indicesData); err != nil {
+			return nil, err
+		}
+
+		return []tensor.Tensor{output}, nil
+	}
+
+	// General path for arbitrary axis.
+	indices := tensor.New(tensor.WithBacking(indicesData), tensor.WithShape(indicesShape...))
+
 	err = gather(output, data, indices, dataAxis)
 	if err != nil {
 		return nil, err
@@ -100,50 +104,83 @@ func (g *Gather) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	return []tensor.Tensor{output}, nil
 }
 
-// Perform gather according to the definition given by ONNX :
-// --------------------------
-// For  axis = 0 :
-// Let  k = indices[i_{0}, ..., i_{q-1}]
-// Then output[i_{0}, ..., i_{q-1}, j_{0}, ..., j_{r-2}] = input[k , j_{0}, ..., j_{r-2}]
-//
-// For  axis = 1 :
-// Let  k = indices[i_{0}, ..., i_{q-1}]
-// Then output[i_{0}, ..., i_{q-1}, j_{0}, ..., j_{r-2}] = input[j_{0}, k, j_{1}, ..., j_{r-2}]
-// --------------------------
-// where q: size of `indices`
-//
-//	r: size of `data`
-//	i and j are here indices which should be iterated over.
-//
-// A simplified example of how i and j work in such a statement (not related to gather):
-// suppose x = [1, 2] and y = [4, 5], and we have statement:
-//
-//	l = x[i_0]
-//	output[i_0, j_0] = y[j_0] - l
-//
-// This means, for each valid combination of (i_0, j_0) (in this case (0,0) (0,1), (1,0) (1,1) )
-// we evaluate the expression, so:
-//
-//	l = x[0]                   -> l = 1
-//	output[0, 0] = y[0] - l    -> output[0,0] = 4 - 1 = 3
-//	l = x[0]                   -> l = 1
-//	output[0, 1] = y[1] - l    -> output[0,1] = 5 - 1 = 4
-//	l = x[1]                   -> l = 2
-//	output[1, 0] = y[0] - l    -> output[1,0] = 4 - 2 = 2
-//	l = x[1]                   -> l = 2
-//	output[1, 1] = y[1] - l    -> output[1,1] = 5 - 2 = 3
-//
-// so this results in:
-//
-//	output = [ 3  4 ]
-//	         [ 2  3 ]
-//
-// -------------------------
-// The implementation iterates over each element in 'indices', and k is extracted.
-// For each given k (and therefore also [i_0, ..., i_q-1]) we need to iterate over each combination
-// of [j_0, ..., j_r-1] and perform the above assignment. Instead of explicitly iterating, we use
-// slicing to extract the blocks that we need to assign, and then pairwise assign them.
+// gatherAxis0 performs gather on axis=0 using direct backing array copy.
+// Each index k selects a contiguous block of innerSize elements from the data backing array.
+func gatherAxis0(out, data tensor.Tensor, indices []int) error {
+	dataShape := data.Shape()
+
+	innerSize := 1
+	for i := 1; i < len(dataShape); i++ {
+		innerSize *= dataShape[i]
+	}
+
+	switch src := data.Data().(type) {
+	case []float32:
+		dst := out.Data().([]float32)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []float64:
+		dst := out.Data().([]float64)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []int:
+		dst := out.Data().([]int)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []int8:
+		dst := out.Data().([]int8)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []int16:
+		dst := out.Data().([]int16)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []int32:
+		dst := out.Data().([]int32)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []int64:
+		dst := out.Data().([]int64)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []uint8:
+		dst := out.Data().([]uint8)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []uint16:
+		dst := out.Data().([]uint16)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []uint32:
+		dst := out.Data().([]uint32)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []uint64:
+		dst := out.Data().([]uint64)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	case []bool:
+		dst := out.Data().([]bool)
+		gatherAxis0Typed(dst, src, indices, innerSize)
+	default:
+		// Fallback to the general slice-based path.
+		idxTensor := tensor.New(tensor.WithBacking(indices), tensor.WithShape(len(indices)))
+		return gather(out, data, idxTensor, 0)
+	}
+
+	return nil
+}
+
+func gatherAxis0Typed[T any](dst, src []T, indices []int, innerSize int) {
+	for i, k := range indices {
+		srcOff := k * innerSize
+		dstOff := i * innerSize
+		copy(dst[dstOff:dstOff+innerSize], src[srcOff:srcOff+innerSize])
+	}
+}
+
+// gather implements the general gather for any axis using slice-based iteration.
+// Slice allocations are hoisted outside the loop and reused across iterations.
 func gather(out, data, indices tensor.Tensor, axis int) error {
+	dataRank := len(data.Shape())
+	indicesRank := len(indices.Shape())
+	osliceLen := indicesRank + dataRank - 1
+
+	// Pre-allocate slice arrays and reusable slicers.
+	dslices := make([]tensor.Slice, dataRank)
+	oslices := make([]tensor.Slice, osliceLen)
+	dSlicer := &ops.Slicer{}
+	oSlicers := make([]ops.Slicer, indicesRank)
+
 	it := indices.Iterator()
 	it.Reset()
 
@@ -160,20 +197,24 @@ func gather(out, data, indices tensor.Tensor, axis int) error {
 			return ops.ErrTypeAssert("int", at)
 		}
 
-		// Slice that selects `k` on the given axis.
-		// Equivalent to: data[:, ... , :, k, :, ..., :], where `k` is on the index `axis`
-		dslices := make([]tensor.Slice, len(data.Shape()))
-		dslices[axis] = ops.NewSlicer(k)
+		// Reset dslices and set the axis slicer.
+		for i := range dslices {
+			dslices[i] = nil
+		}
+
+		dSlicer.SetStartEnd(k, k+1)
+		dslices[axis] = dSlicer
+
 		dataSlice, _ := data.Slice(dslices...)
 
-		// slice with the current indices (used to make k) starting from `axis` and
-		// the rest nil.
-		// Equivalent to:
-		//    out[:, ... , :, i_1, ..., i_N, :, ..., :]
-		// where i_1 starts at index 'axis'. Note that:  k = indices[i_1, ..., i_N]
-		oslices := make([]tensor.Slice, len(coords)+len(data.Shape())-1)
+		// Reset oslices and set the coordinate slicers.
+		for i := range oslices {
+			oslices[i] = nil
+		}
+
 		for i, s := range coords {
-			oslices[i+axis] = ops.NewSlicer(s)
+			oSlicers[i].SetStartEnd(s, s+1)
+			oslices[i+axis] = &oSlicers[i]
 		}
 
 		outputSlice, _ := out.Slice(oslices...)

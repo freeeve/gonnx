@@ -354,6 +354,35 @@ func BenchmarkGather_Apply(b *testing.B) {
 	}
 }
 
+func BenchmarkGather_Apply_Axis1(b *testing.B) {
+	g := gatherVersions[13]()
+	err := g.Init(makeAxisProto(1))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	data := ops.Float32TensorFixture(64, 64)
+
+	idxBacking := make([]int64, 32)
+	for i := range idxBacking {
+		idxBacking[i] = int64(i % 64)
+	}
+	indices := tensor.New(tensor.WithBacking(idxBacking), tensor.WithShape(32))
+
+	inputs := []tensor.Tensor{data, indices}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		y, err := g.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = y
+	}
+}
+
 func gather13BaseOpFixture() ops.BaseOperator {
 	return ops.NewBaseOperator(13, 2, 2, gatherTypeConstraints, "gather")
 }
