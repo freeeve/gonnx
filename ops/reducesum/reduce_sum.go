@@ -79,7 +79,7 @@ func (r *ReduceSum) Init(n *onnx.NodeProto) error {
 
 // Apply applies the ReduceSum operator.
 func (r *ReduceSum) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
-	input := tensor.New(tensor.WithBacking(inputs[0].Data()), tensor.WithShape(inputs[0].Shape()...))
+	input := inputs[0].(*tensor.Dense)
 
 	axes := r.axes
 

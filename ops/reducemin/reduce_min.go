@@ -70,7 +70,7 @@ func (r *ReduceMin) Init(n *onnx.NodeProto) error {
 
 // Apply applies the reduceMin operator.
 func (r *ReduceMin) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
-	input := tensor.New(tensor.WithBacking(inputs[0].Data()), tensor.WithShape(inputs[0].Shape()...))
+	input := inputs[0].(*tensor.Dense)
 
 	axes := make([]int, len(r.axes))
 	for i, axis := range r.axes {
@@ -83,7 +83,8 @@ func (r *ReduceMin) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	}
 
 	if r.keepDims {
-		newShape := input.Shape()
+		newShape := make([]int, len(input.Shape()))
+		copy(newShape, input.Shape())
 		for _, axes := range axes {
 			newShape[axes] = 1
 		}

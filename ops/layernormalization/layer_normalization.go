@@ -18,9 +18,10 @@ var layerNormTypeConstraints = [][]tensor.Dtype{
 type LayerNormalization struct {
 	ops.BaseOperator
 
-	axis      int
-	epsilon   float32
-	stashType int
+	axis       int
+	epsilon    float32
+	stashType  int
+	numOutputs int
 }
 
 // newLayerNormalization creates a new LayerNormalization operator.
@@ -52,6 +53,11 @@ func (l *LayerNormalization) Init(n *onnx.NodeProto) error {
 		default:
 			return ops.ErrInvalidAttribute(attr.GetName(), l)
 		}
+	}
+
+	l.numOutputs = len(n.GetOutput())
+	if l.numOutputs == 0 {
+		l.numOutputs = 3
 	}
 
 	return nil
@@ -146,6 +152,10 @@ func (l *LayerNormalization) applyFloat32(x, scale, bias tensor.Tensor, axis int
 
 	yTensor := tensor.New(tensor.WithBacking(output), tensor.WithShape(shape...))
 
+	if l.numOutputs <= 1 {
+		return []tensor.Tensor{yTensor}, nil
+	}
+
 	meanShape := make([]int, axis)
 	copy(meanShape, shape[:axis])
 	if len(meanShape) == 0 {
@@ -213,6 +223,10 @@ func (l *LayerNormalization) applyFloat64(x, scale, bias tensor.Tensor, axis int
 	}
 
 	yTensor := tensor.New(tensor.WithBacking(output), tensor.WithShape(shape...))
+
+	if l.numOutputs <= 1 {
+		return []tensor.Tensor{yTensor}, nil
+	}
 
 	meanShape := make([]int, axis)
 	copy(meanShape, shape[:axis])
