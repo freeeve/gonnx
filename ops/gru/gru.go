@@ -186,22 +186,22 @@ func (g *GRU) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 
 	// Expand all biases from (hidden) to (batch, hidden) to match MatMul output shapes.
 	// Done once before the loop to avoid per-timestep broadcast allocations.
-	biasZ, err = expandBias(biasZ, batchSize)
+	biasZ, err = ops.ExpandBias(biasZ, batchSize)
 	if err != nil {
 		return nil, err
 	}
 
-	biasR, err = expandBias(biasR, batchSize)
+	biasR, err = ops.ExpandBias(biasR, batchSize)
 	if err != nil {
 		return nil, err
 	}
 
-	Wbh, err = expandBias(Wbh, batchSize)
+	Wbh, err = ops.ExpandBias(Wbh, batchSize)
 	if err != nil {
 		return nil, err
 	}
 
-	Rbh, err = expandBias(Rbh, batchSize)
+	Rbh, err = ops.ExpandBias(Rbh, batchSize)
 	if err != nil {
 		return nil, err
 	}
@@ -409,19 +409,6 @@ func gruHiddenTyped[T ops.FloatType](out, zt, ht, prevH []T) {
 }
 
 // expandBias reshapes a 1D bias (hidden) to (1, hidden) and repeats to (batchSize, hidden).
-func expandBias(bias tensor.Tensor, batchSize int) (tensor.Tensor, error) {
-	hidden := bias.Shape()[0]
-	if err := bias.Reshape(1, hidden); err != nil {
-		return nil, err
-	}
-
-	if batchSize > 1 {
-		return tensor.Repeat(bias, 0, batchSize)
-	}
-
-	return bias, nil
-}
-
 // getWeights splits tensor W into 3 weight matrices.
 // The W tensor, by GONNX definition, has 3 dimensions with 3 weight
 // tensors in it (6 if bidirectional, but that is not supported).

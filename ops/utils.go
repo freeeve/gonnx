@@ -256,6 +256,21 @@ func PairwiseAssign(t1, t2 tensor.Tensor) (err error) {
 	return nil
 }
 
+// ExpandBias reshapes a 1D bias tensor to (1, hidden) and repeats it along the batch
+// dimension if batchSize > 1. This is used by RNN, GRU, and LSTM operators.
+func ExpandBias(bias tensor.Tensor, batchSize int) (tensor.Tensor, error) {
+	hidden := bias.Shape()[0]
+	if err := bias.Reshape(1, hidden); err != nil {
+		return nil, err
+	}
+
+	if batchSize > 1 {
+		return tensor.Repeat(bias, 0, batchSize)
+	}
+
+	return bias, nil
+}
+
 // Converts a negative axis to the corresponding axis such that it can be used as index.
 // For example, if axis is -1, this represents the last dimension. Go does not support
 // negative indexing (as opposed to Python, on which ONNX is heavily dependent), so we

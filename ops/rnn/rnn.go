@@ -144,7 +144,7 @@ func (r *RNN) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 		return nil, err
 	}
 
-	bias, err = expandBias(bias, batchSize)
+	bias, err = ops.ExpandBias(bias, batchSize)
 	if err != nil {
 		return nil, err
 	}
@@ -234,19 +234,6 @@ func (r *RNN) layerCalcDirect(
 }
 
 // expandBias reshapes a 1D bias (hidden) to (1, hidden) and repeats to (batchSize, hidden).
-func expandBias(bias tensor.Tensor, batchSize int) (tensor.Tensor, error) {
-	hidden := bias.Shape()[0]
-	if err := bias.Reshape(1, hidden); err != nil {
-		return nil, err
-	}
-
-	if batchSize > 1 {
-		return tensor.Repeat(bias, 0, batchSize)
-	}
-
-	return bias, nil
-}
-
 // getWeights returns the weights from a concatenated weight tensor. The result is
 // a single weight matrix. W has shape (num_directions, hidden_size, ...).
 // The W tensor, by GONNX definition, has 3 dimensions with 1 weight
