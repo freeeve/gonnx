@@ -1,9 +1,10 @@
 package reducemean
 
 import (
+	"fmt"
+
 	"github.com/advancedclimatesystems/gonnx/onnx"
 	"github.com/advancedclimatesystems/gonnx/ops"
-	"github.com/pkg/errors"
 	"gorgonia.org/tensor"
 )
 
@@ -86,7 +87,7 @@ func cast(count int, t tensor.Dtype) (any, error) {
 	case tensor.Complex128:
 		return complex(float64(count), 0), nil
 	default:
-		return nil, errors.Errorf("No methods found for Sum for %v", t)
+		return nil, fmt.Errorf("no methods found for Sum for %v", t)
 	}
 }
 
@@ -94,26 +95,27 @@ func cast(count int, t tensor.Dtype) (any, error) {
 func (r *ReduceMean) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	input := tensor.New(tensor.WithBacking(inputs[0].Data()), tensor.WithShape(inputs[0].Shape()...))
 
-	if len(r.axes) == 0 {
-		axes := make([]int, len(input.Shape()))
+	axes := r.axes
+	if len(axes) == 0 {
+		axes = make([]int, len(input.Shape()))
 		for i := range axes {
 			axes[i] = i
 		}
 	}
 
-	axes := make([]int, len(r.axes))
-	for i, axis := range r.axes {
-		axes[i] = ops.ConvertNegativeAxis(axis, len(input.Shape()))
+	resolvedAxes := make([]int, len(axes))
+	for i, axis := range axes {
+		resolvedAxes[i] = ops.ConvertNegativeAxis(axis, len(input.Shape()))
 	}
 
-	sum, err := input.Sum(axes...)
+	sum, err := input.Sum(resolvedAxes...)
 	if err != nil {
 		return nil, err
 	}
 
 	// tensor.NonMaskedCount seems to be bugged, so we'll calculate the count manually
 	count := 1
-	for _, axis := range axes {
+	for _, axis := range resolvedAxes {
 		count *= input.Shape()[axis]
 	}
 
@@ -128,9 +130,10 @@ func (r *ReduceMean) Apply(inputs []tensor.Tensor) ([]tensor.Tensor, error) {
 	}
 
 	if r.keepDims {
-		newShape := input.Shape()
-		for _, axes := range axes {
-			newShape[axes] = 1
+		newShape := make([]int, len(input.Shape()))
+		copy(newShape, input.Shape())
+		for _, axis := range resolvedAxes {
+			newShape[axis] = 1
 		}
 
 		err := out.Reshape(newShape...)

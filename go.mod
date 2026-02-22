@@ -4,7 +4,6 @@ go 1.23
 
 require (
 	github.com/chewxy/math32 v1.10.1
-	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
 	google.golang.org/protobuf v1.31.0
 	gorgonia.org/tensor v0.9.24
@@ -17,6 +16,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/flatbuffers v23.5.26+incompatible // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/xtgo/set v1.0.0 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20231121144256-b99613f794b6 // indirect

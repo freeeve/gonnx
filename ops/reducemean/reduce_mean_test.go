@@ -29,7 +29,7 @@ func TestReduceMean(t *testing.T) {
 		node            *onnx.NodeProto
 		backing         []float32
 		shape           []int
-		expectedBacking []float32
+		expectedBacking interface{}
 		expectedShape   tensor.Shape
 	}{
 		{
@@ -226,6 +226,31 @@ func TestReduceMean(t *testing.T) {
 			[]int{2, 2},
 			[]float32{0.5, 2.5},
 			[]int{2, 1},
+		},
+		// Empty axes should reduce over all dimensions (scalar mean).
+		{
+			13,
+			&onnx.NodeProto{
+				Attribute: []*onnx.AttributeProto{
+					{Name: "keepdims", I: 0},
+				},
+			},
+			[]float32{0, 1, 2, 3, 4, 5},
+			[]int{2, 3},
+			float32(2.5),
+			nil,
+		},
+		{
+			13,
+			&onnx.NodeProto{
+				Attribute: []*onnx.AttributeProto{
+					{Name: "keepdims", I: 1},
+				},
+			},
+			[]float32{0, 1, 2, 3, 4, 5},
+			[]int{2, 3},
+			[]float32{2.5},
+			[]int{1, 1},
 		},
 	}
 
