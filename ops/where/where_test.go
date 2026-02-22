@@ -1,6 +1,7 @@
 package where
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -88,5 +89,69 @@ func TestWhere(t *testing.T) {
 		res, err := op.Apply(inputs)
 		assert.Nil(t, err)
 		assert.Equal(t, test.expectedBacking, res[0].Data())
+	}
+}
+
+func BenchmarkWhere(b *testing.B) {
+	n := 10000
+	cond := make([]bool, n)
+	x := make([]float32, n)
+	y := make([]float32, n)
+
+	for i := 0; i < n; i++ {
+		cond[i] = rand.Intn(2) == 1
+		x[i] = rand.Float32()
+		y[i] = rand.Float32()
+	}
+
+	op := whereVersions[9]()
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		inputs := []tensor.Tensor{
+			tensor.New(tensor.WithShape(n), tensor.WithBacking(cond)),
+			tensor.New(tensor.WithShape(n), tensor.WithBacking(x)),
+			tensor.New(tensor.WithShape(n), tensor.WithBacking(y)),
+		}
+
+		_, err := op.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkWhereBroadcast(b *testing.B) {
+	rows, cols := 100, 100
+	n := rows * cols
+	cond := make([]bool, cols)
+	x := make([]float32, n)
+	y := make([]float32, n)
+
+	for i := 0; i < cols; i++ {
+		cond[i] = rand.Intn(2) == 1
+	}
+
+	for i := 0; i < n; i++ {
+		x[i] = rand.Float32()
+		y[i] = rand.Float32()
+	}
+
+	op := whereVersions[9]()
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		inputs := []tensor.Tensor{
+			tensor.New(tensor.WithShape(cols), tensor.WithBacking(cond)),
+			tensor.New(tensor.WithShape(rows, cols), tensor.WithBacking(x)),
+			tensor.New(tensor.WithShape(rows, cols), tensor.WithBacking(y)),
+		}
+
+		_, err := op.Apply(inputs)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
